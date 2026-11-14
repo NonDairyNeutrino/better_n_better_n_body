@@ -34,3 +34,18 @@ pub fn find_bounding_box(system: &[Object]) -> ([f64; 3], f64) {
     let width: f64 = find_half_width(system, center);
     return (center, width);
 }
+
+#[derive(Debug)]
+enum Node {
+    Body0,
+    Body1 {
+        obj: Object,
+    },
+    BodyN {
+        center: [f64; 3],
+        hw: f64,
+        mass: f64,
+        com: [f64; 3],
+        children: Box<[Node; 8]>,
+    },
+}
