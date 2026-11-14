@@ -3,7 +3,7 @@
 pub const G: f64 = 6.67 * 1e-11;
 
 /// This is the docstring for Object
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Object {
     pub mass: f64,
     pub pos: [f64; 3],
@@ -18,6 +18,7 @@ impl Object {
             mass: 1f64,
         };
     }
+    /// Calculates the Euclidean distance between an object and a position
     pub fn distance(&self, pos: &[f64; 3]) -> f64 {
         self.pos
             .iter()
@@ -25,7 +26,6 @@ impl Object {
             .map(|pair| (*pair.0 - pair.1).powi(2))
             .sum()
     }
-    // r#move to escape because move is a keyword
     pub fn accelerate(&mut self, acc: &[f64; 3], dt: f64) {
         // evolve via symplectic-euler
         for (i, a) in acc.iter().enumerate() {
@@ -33,4 +33,15 @@ impl Object {
             self.pos[i] += self.vel[i] * dt + 0.5_f64 * a * dt.powi(2);
         }
     }
+}
+
+pub fn gravity(object: &Object, pos: &[f64; 3]) -> [f64; 3] {
+    let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
+    let mut grav: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
+
+    for dim in 0..grav.len() {
+        grav[dim] = strength * (object.pos[dim] - pos[dim]);
+    }
+
+    return grav;
 }
