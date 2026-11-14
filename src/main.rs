@@ -1,17 +1,12 @@
 mod direct;
 mod shared;
-use shared::{Object, gravity};
+use shared::Object;
 
-use crate::direct::simulate_step;
+use crate::direct::simulate;
 
 fn main() {
-    let mut ob: Object = Object::new();
-    println!("{ob:?}");
-    let g: [f64; 3] = gravity(&ob, &[1f64, 0f64, 0f64]);
-    println!("gravity 1m away from 1kg is {g:?}");
+    let ob: Object = Object::new();
     let dt: f64 = 0.01; // seconds
-    ob.accelerate(&g, dt);
-    println!("{ob:?}");
     let mut system: [Object; 2] = [
         ob,
         Object {
@@ -20,6 +15,7 @@ fn main() {
             vel: [0.0_f64, 0.0_f64, 0.0_f64],
         },
     ];
-    simulate_step(system.as_mut_slice(), dt);
+    let total_time: f64 = 1000.0f64;
+    simulate(&mut system, dt, total_time);
     println!("{system:?}")
 }
