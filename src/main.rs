@@ -1,21 +1,32 @@
 mod direct;
 mod shared;
+use std::time::Instant;
+
 use shared::Object;
 
-use crate::direct::simulate;
-
 fn main() {
-    let ob: Object = Object::new();
     let dt: f64 = 0.01; // seconds
-    let mut system: [Object; 2] = [
-        ob,
+    let mut system: [Object; 3] = [
         Object {
             mass: 1.0,
             pos: [1.0_f64, 0.0_f64, 0.0_f64],
             vel: [0.0_f64, 0.0_f64, 0.0_f64],
         },
+        Object {
+            mass: 1.0,
+            pos: [0.0_f64, 1.0_f64, 0.0_f64],
+            vel: [0.0_f64, 0.0_f64, 0.0_f64],
+        },
+        Object {
+            mass: 1.0,
+            pos: [0.0_f64, 0.0_f64, 1.0_f64],
+            vel: [0.0_f64, 0.0_f64, 0.0_f64],
+        },
     ];
+    println!("Starting system: {system:?}");
     let total_time: f64 = 1000.0f64;
-    simulate(&mut system, dt, total_time);
-    println!("{system:?}")
+    let start: Instant = Instant::now();
+    direct::simulate(&mut system, dt, total_time);
+    let stop: Instant = Instant::now();
+    println!("Final system: {system:?} in {:?}", stop - start)
 }
