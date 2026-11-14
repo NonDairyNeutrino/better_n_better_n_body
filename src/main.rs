@@ -26,6 +26,7 @@ fn main() {
     ];
     println!("Starting system: {system:?}");
     let total_time: f64 = 1000.0f64;
+
     let start: Instant = Instant::now();
     direct::simulate(&mut system, dt, total_time);
     let stop: Instant = Instant::now();

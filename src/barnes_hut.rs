@@ -17,10 +17,10 @@ fn find_center(system: &[Object]) -> [f64; 3] {
     return center;
 }
 
-fn find_half_width(system: &[Object]) -> f64 {
+fn find_half_width(system: &[Object], center: [f64; 3]) -> f64 {
     let mut half_width: f64 = 0.0_f64;
     for obj in system {
-        let d: f64 = obj.distance(&[0.0_f64, 0.0_f64, 0.0_f64]);
+        let d: f64 = obj.distance(&center);
         if d > half_width {
             half_width = d;
         }
@@ -28,9 +28,9 @@ fn find_half_width(system: &[Object]) -> f64 {
     return half_width;
 }
 
-/// Find the center and half-width of a cube that contains the system
+/// Find the center and half-width of a cube that contains the system.
 pub fn find_bounding_box(system: &[Object]) -> ([f64; 3], f64) {
-    let width: f64 = find_half_width(system);
     let center: [f64; 3] = find_center(system);
+    let width: f64 = find_half_width(system, center);
     return (center, width);
 }
