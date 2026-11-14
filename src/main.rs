@@ -1,3 +1,4 @@
+mod barnes_hut;
 mod direct;
 mod shared;
 use std::time::Instant;
@@ -28,5 +29,8 @@ fn main() {
     let start: Instant = Instant::now();
     direct::simulate(&mut system, dt, total_time);
     let stop: Instant = Instant::now();
-    println!("Final system: {system:?} in {:?}", stop - start)
+    println!("Final system: {system:?} in {:?}", stop - start);
+
+    let bounding_box: ([f64; 3], f64) = barnes_hut::find_bounding_box(system.as_slice());
+    println!("The bounding box for the system is {bounding_box:?}")
 }
