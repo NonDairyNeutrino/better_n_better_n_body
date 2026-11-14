@@ -24,7 +24,8 @@ impl Object {
             .iter()
             .zip(pos)
             .map(|pair| (*pair.0 - pair.1).powi(2))
-            .sum()
+            .sum::<f64>()
+            .sqrt()
     }
     pub fn accelerate(&mut self, acc: &[f64; 3], dt: f64) {
         // evolve via symplectic-euler
