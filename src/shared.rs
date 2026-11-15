@@ -1,5 +1,7 @@
 //! This is a module documentation
 
+use std::fmt::Display;
+
 pub const G: f64 = 6.67 * 1e-11;
 pub const ORIGIN: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 
@@ -36,6 +38,24 @@ impl Body {
         }
     }
 }
+
+/// A collection of bodies in a cubical space with a center and half-width
+#[derive(Debug)]
+pub struct System {
+    pub bodies: Vec<Body>,
+    pub center: [f64; 3],
+    pub hw: f64,
+}
+impl System {
+    fn new(center: [f64; 3], half_width: f64) -> System {
+        System {
+            bodies: Vec::new(),
+            center: center,
+            hw: half_width,
+        }
+    }
+}
+// impl Display for System {}
 
 pub fn gravity(object: &Body, pos: &[f64; 3]) -> [f64; 3] {
     let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
