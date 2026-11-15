@@ -56,10 +56,3 @@ impl Node {
         }
     }
 }
-
-fn child_index(center: [f64; 3], pos: [f64; 3]) -> usize {
-    todo!()
-}
-fn child_center(center: [f64; 3], half_width: f64, index: usize) -> [f64; 3] {
-    todo!()
-}

@@ -5,13 +5,11 @@ use std::time::Instant;
 
 use shared::{Body, System};
 
-use crate::shared::ORIGIN;
-
 fn main() {
     let dt: f64 = 0.01; // seconds
     let total_time: f64 = 1000.0f64;
-    let mut system: System = System {
-        bodies: vec![
+    let mut system: System = System::from_bodies(
+        vec![
             Body {
                 mass: 1.0,
                 pos: [1.0_f64, 0.0_f64, 0.0_f64],
@@ -27,10 +25,9 @@ fn main() {
                 pos: [0.0_f64, 0.0_f64, 1.0_f64],
                 vel: [0.0_f64, 0.0_f64, 0.0_f64],
             },
-        ],
-        center: ORIGIN,
-        hw: 0.0_f64,
-    };
+        ]
+        .as_slice(),
+    );
     println!("Starting system: {system:?}");
 
     let start: Instant = Instant::now();

@@ -1,5 +1,7 @@
 //! This is a module documentation
 
+use std::array::from_fn;
+
 pub const G: f64 = 6.67 * 1e-11;
 pub const ORIGIN: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 
@@ -64,8 +66,6 @@ impl System {
     }
     pub fn add_body(&mut self, body: Body) {
         self.bodies.push(body);
-        self.center = find_center(self.bodies.as_slice());
-        self.hw = find_half_width(self.bodies.as_slice(), self.center);
     }
     pub fn add_bodies(&mut self, bodies: &[Body]) {
         // know how much more space is needed, so allocate first, then push each
@@ -73,8 +73,6 @@ impl System {
         for body in bodies {
             self.bodies.push(*body);
         }
-        self.center = find_center(self.bodies.as_slice());
-        self.hw = find_half_width(self.bodies.as_slice(), self.center);
     }
     pub fn join(&mut self, system: &System) {
         self.add_bodies(system.bodies.as_slice());
@@ -111,6 +109,22 @@ impl System {
         return systems;
     }
 }
+
+fn child_index(center: [f64; 3], pos: [f64; 3]) -> usize {
+    let mut idx: usize = 0;
+    if pos[0] >= center[0] {
+        idx += 1;
+    }
+    if pos[1] >= center[1] {
+        idx += 2;
+    }
+    if pos[2] >= center[2] {
+        idx += 4;
+    }
+    return idx;
+}
+fn child_center(center: [f64; 3], half_width: f64, index: usize) -> [f64; 3] {
+    todo!()
 }
 
 fn find_center(system: &[Body]) -> [f64; 3] {
