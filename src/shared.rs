@@ -54,7 +54,7 @@ impl<'a> System<'a> {
             hw: half_width,
         }
     }
-    pub fn from_bodies(bodies: &'a [Body]) -> System {
+    pub fn from_bodies(bodies: &'a [Body]) -> System<'a> {
         let bods: Vec<&'a Body> = bodies.iter().collect();
         let center: [f64; 3] = find_center(bodies);
         let hw: f64 = find_half_width(bodies, center);
