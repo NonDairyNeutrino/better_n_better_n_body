@@ -41,21 +41,21 @@ impl Body {
 
 /// A collection of bodies in a cubical space with a center and half-width
 #[derive(Debug)]
-pub struct System {
-    pub bodies: Vec<Body>,
+pub struct System<'a> {
+    pub bodies: Vec<&'a Body>,
     pub center: [f64; 3],
     pub hw: f64,
 }
-impl System {
-    pub fn new(center: [f64; 3], half_width: f64) -> System {
+impl<'a> System<'a> {
+    pub fn new(center: [f64; 3], half_width: f64) -> System<'a> {
         System {
             bodies: Vec::new(),
             center: center,
             hw: half_width,
         }
     }
-    pub fn from_bodies(bodies: &[Body]) -> System {
-        let bods: Vec<Body> = bodies.to_vec();
+    pub fn from_bodies(bodies: &'a [Body]) -> System {
+        let bods: Vec<&'a Body> = bodies.iter().collect();
         let center: [f64; 3] = find_center(bodies);
         let hw: f64 = find_half_width(bodies, center);
         System {
@@ -64,18 +64,18 @@ impl System {
             hw: hw,
         }
     }
-    pub fn add_body(&mut self, body: Body) {
+    pub fn add_body(&mut self, body: &'a Body) {
         self.bodies.push(body);
     }
-    pub fn add_bodies(&mut self, bodies: &[Body]) {
+    pub fn add_bodies(&mut self, bodies: &'a [Body]) {
         // know how much more space is needed, so allocate first, then push each
         self.bodies.reserve(bodies.len());
         for body in bodies {
-            self.bodies.push(*body);
+            self.bodies.push(body);
         }
     }
-    pub fn join(&mut self, system: &System) {
-        self.add_bodies(system.bodies.as_slice());
+    pub fn join(&mut self, system: &'a System) {
+        self.bodies.extend_from_slice(&system.bodies);
     }
     pub fn find_com(&self) -> [f64; 3] {
         let mut com: [f64; 3] = ORIGIN;
@@ -97,7 +97,7 @@ impl System {
         }
         return com;
     }
-    pub fn partition(self) -> [System; 8] {
+    pub fn partition(self) -> [System<'a>; 8] {
         let mut systems: [System; 8] =
             from_fn(|i| System::new(child_center(self.center, self.hw, i), self.hw / 2.0));
 
