@@ -38,6 +38,6 @@ fn main() {
     let stop: Instant = Instant::now();
     println!("Final system: {system:?} in {:?}", stop - start);
 
-    let bounding_box: ([f64; 3], f64) = barnes_hut::find_bounding_box(system.bodies.as_slice());
+    let bounding_box: ([f64; 3], f64) = shared::find_bounding_box(system.bodies.as_slice());
     println!("The bounding box for the system is {bounding_box:?}")
 }
