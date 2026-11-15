@@ -1,7 +1,7 @@
-use crate::shared::{Body, gravity};
+use crate::shared::{Body, ORIGIN, gravity};
 
 fn calculate_acceleration_from_system(system: &[Body], pos: &[f64; 3]) -> [f64; 3] {
-    let mut this_acc: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
+    let mut this_acc: [f64; 3] = ORIGIN;
 
     for that in system {
         if that.pos != *pos {
@@ -16,16 +16,15 @@ fn calculate_acceleration_from_system(system: &[Body], pos: &[f64; 3]) -> [f64; 
 }
 
 pub fn simulate_step(system: &mut [Body], time_step: f64) {
-    // need old_system or else later objects will use new positions
-    let mut old_system: Vec<Body> = Vec::new();
-    old_system.resize(system.len(), Body::new());
-    old_system.clone_from_slice(system);
+    let mut accelerations: Vec<[f64; 3]> = Vec::with_capacity(system.len());
 
-    for this in system {
-        let this_acc: [f64; 3] =
-            calculate_acceleration_from_system(old_system.as_slice(), &this.pos);
+    for this in system.iter() {
+        let this_acc: [f64; 3] = calculate_acceleration_from_system(system, &this.pos);
+        accelerations.push(this_acc);
+    }
 
-        this.accelerate(&this_acc, time_step);
+    for (this, acc) in system.iter_mut().zip(accelerations) {
+        this.accelerate(&acc, time_step);
     }
 }
 
