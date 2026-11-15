@@ -1,6 +1,7 @@
+use crate::shared::{Body, ORIGIN};
 
-    let mut center: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 fn find_center(system: &[Body]) -> [f64; 3] {
+    let mut center: [f64; 3] = ORIGIN;
     let n_bodies: f64 = system.len() as f64;
 
     for obj in system {

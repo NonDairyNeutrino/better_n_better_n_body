@@ -1,6 +1,7 @@
 //! This is a module documentation
 
 pub const G: f64 = 6.67 * 1e-11;
+pub const ORIGIN: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 
 /// This is the docstring for Object
 #[derive(Debug, PartialEq, Clone, Copy)]
