@@ -1,9 +1,8 @@
 mod barnes_hut;
 mod direct;
 mod shared;
-use std::time::Instant;
-
 use shared::{Body, System};
+use std::time::Instant;
 
 fn main() {
     let dt: f64 = 0.01; // seconds
