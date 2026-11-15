@@ -3,22 +3,22 @@ mod direct;
 mod shared;
 use std::time::Instant;
 
-use shared::Object;
+use shared::Body;
 
 fn main() {
     let dt: f64 = 0.01; // seconds
-    let mut system: [Object; 3] = [
-        Object {
+    let mut system: [Body; 3] = [
+        Body {
             mass: 1.0,
             pos: [1.0_f64, 0.0_f64, 0.0_f64],
             vel: [0.0_f64, 0.0_f64, 0.0_f64],
         },
-        Object {
+        Body {
             mass: 1.0,
             pos: [0.0_f64, 1.0_f64, 0.0_f64],
             vel: [0.0_f64, 0.0_f64, 0.0_f64],
         },
-        Object {
+        Body {
             mass: 1.0,
             pos: [0.0_f64, 0.0_f64, 1.0_f64],
             vel: [0.0_f64, 0.0_f64, 0.0_f64],

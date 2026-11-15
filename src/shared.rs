@@ -4,15 +4,15 @@ pub const G: f64 = 6.67 * 1e-11;
 
 /// This is the docstring for Object
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub struct Object {
+pub struct Body {
     pub mass: f64,
     pub pos: [f64; 3],
     pub vel: [f64; 3],
 }
-impl Object {
+impl Body {
     /// Creates a new physical Object
-    pub fn new() -> Object {
-        return Object {
+    pub fn new() -> Body {
+        return Body {
             pos: [0f64, 0f64, 0f64],
             vel: [0f64, 0f64, 0f64],
             mass: 1f64,
@@ -36,7 +36,7 @@ impl Object {
     }
 }
 
-pub fn gravity(object: &Object, pos: &[f64; 3]) -> [f64; 3] {
+pub fn gravity(object: &Body, pos: &[f64; 3]) -> [f64; 3] {
     let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
     let mut grav: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 

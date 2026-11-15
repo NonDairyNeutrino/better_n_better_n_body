@@ -1,7 +1,6 @@
-use crate::shared::Object;
 
-fn find_center(system: &[Object]) -> [f64; 3] {
     let mut center: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
+fn find_center(system: &[Body]) -> [f64; 3] {
     let n_bodies: f64 = system.len() as f64;
 
     for obj in system {
@@ -17,7 +16,7 @@ fn find_center(system: &[Object]) -> [f64; 3] {
     return center;
 }
 
-fn find_half_width(system: &[Object], center: [f64; 3]) -> f64 {
+fn find_half_width(system: &[Body], center: [f64; 3]) -> f64 {
     let mut half_width: f64 = 0.0_f64;
     for obj in system {
         let d: f64 = obj.distance(&center);
@@ -29,7 +28,7 @@ fn find_half_width(system: &[Object], center: [f64; 3]) -> f64 {
 }
 
 /// Find the center and half-width of a cube that contains the system.
-pub fn find_bounding_box(system: &[Object]) -> ([f64; 3], f64) {
+pub fn find_bounding_box(system: &[Body]) -> ([f64; 3], f64) {
     let center: [f64; 3] = find_center(system);
     let width: f64 = find_half_width(system, center);
     return (center, width);

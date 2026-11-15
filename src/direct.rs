@@ -1,6 +1,6 @@
-use crate::shared::{Object, gravity};
+use crate::shared::{Body, gravity};
 
-fn calculate_acceleration_from_system(system: &[Object], pos: &[f64; 3]) -> [f64; 3] {
+fn calculate_acceleration_from_system(system: &[Body], pos: &[f64; 3]) -> [f64; 3] {
     let mut this_acc: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
 
     for that in system {
@@ -15,10 +15,10 @@ fn calculate_acceleration_from_system(system: &[Object], pos: &[f64; 3]) -> [f64
     return this_acc;
 }
 
-pub fn simulate_step(system: &mut [Object], time_step: f64) {
+pub fn simulate_step(system: &mut [Body], time_step: f64) {
     // need old_system or else later objects will use new positions
-    let mut old_system: Vec<Object> = Vec::new();
-    old_system.resize(system.len(), Object::new());
+    let mut old_system: Vec<Body> = Vec::new();
+    old_system.resize(system.len(), Body::new());
     old_system.clone_from_slice(system);
 
     for this in system {
@@ -29,7 +29,7 @@ pub fn simulate_step(system: &mut [Object], time_step: f64) {
     }
 }
 
-pub fn simulate(system: &mut [Object], time_step: f64, total_time: f64) {
+pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
     println!("Stepping {nsteps} times");
     for _ in 0..nsteps {
