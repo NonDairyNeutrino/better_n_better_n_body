@@ -180,3 +180,18 @@ pub fn gravity(object: &Body, pos: &[f64; 3]) -> [f64; 3] {
 
     return grav;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn distance_is_euclidean() {
+        let body = Body {
+            pos: [3.0, 4.0, 0.0],
+            ..Body::new()
+        };
+        let d = body.distance(&[0.0, 0.0, 0.0]);
+        assert!((d - 5.0).abs() < 1e-9);
+    }
+}
