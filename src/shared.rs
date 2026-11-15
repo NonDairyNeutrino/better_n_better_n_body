@@ -34,7 +34,7 @@ impl Body {
         // evolve via symplectic-euler
         for (i, a) in acc.iter().enumerate() {
             self.vel[i] += a * dt;
-            self.pos[i] += self.vel[i] * dt + 0.5_f64 * a * dt.powi(2);
+            self.pos[i] += self.vel[i] * dt;
         }
     }
 }
