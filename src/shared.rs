@@ -99,6 +99,18 @@ impl System {
         }
         return com;
     }
+    pub fn partition(self) -> [System; 8] {
+        let mut systems: [System; 8] =
+            from_fn(|i| System::new(child_center(self.center, self.hw, i), self.hw / 2.0));
+
+        for body in self.bodies {
+            let idx: usize = child_index(self.center, body.pos);
+            systems[idx].add_body(body);
+        }
+
+        return systems;
+    }
+}
 }
 
 fn find_center(system: &[Body]) -> [f64; 3] {
