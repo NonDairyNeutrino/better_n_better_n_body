@@ -124,7 +124,12 @@ fn child_index(center: [f64; 3], pos: [f64; 3]) -> usize {
     return idx;
 }
 fn child_center(center: [f64; 3], half_width: f64, index: usize) -> [f64; 3] {
-    todo!()
+    let mut chi_cen: [f64; 3] = ORIGIN;
+    for dim in 0..center.len() {
+        let bit: i32 = ((index / 2_usize.pow(dim as u32)) % 2) as i32;
+        chi_cen[dim] = center[dim] + (-1.0_f64).powi(bit + 1) * (half_width / 2.0_f64);
+    }
+    return chi_cen;
 }
 
 fn find_center(system: &[Body]) -> [f64; 3] {
