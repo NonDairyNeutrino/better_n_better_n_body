@@ -79,6 +79,26 @@ impl System {
     pub fn join(&mut self, system: &System) {
         self.add_bodies(system.bodies.as_slice());
     }
+    pub fn find_com(&self) -> [f64; 3] {
+        let mut com: [f64; 3] = ORIGIN;
+        if self.bodies.is_empty() {
+            return com;
+        }
+
+        // find the mass-weighted total
+        for body in &self.bodies {
+            for dim in 0..com.len() {
+                com[dim] += body.mass * body.pos[dim];
+            }
+        }
+
+        // normalize by total mass
+        let total_mass: f64 = self.bodies.iter().map(|b| b.mass).sum();
+        for dim in 0..com.len() {
+            com[dim] /= total_mass;
+        }
+        return com;
+    }
 }
 
 fn find_center(system: &[Body]) -> [f64; 3] {

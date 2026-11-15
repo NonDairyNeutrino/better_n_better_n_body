@@ -1,4 +1,4 @@
-use crate::shared::{Body, ORIGIN};
+use crate::shared::Body;
 
 #[derive(Debug, Clone)]
 enum Node {
