@@ -27,10 +27,37 @@ fn main() {
 
     // direct simulation
     println!("Starting universe: {bodies:?}");
-    let start: Instant = Instant::now();
+    let start_direct: Instant = Instant::now();
     direct::simulate(&mut bodies, dt, total_time);
-    let stop: Instant = Instant::now();
-    println!("Final system: {bodies:?} in {:?}", stop - start);
+    println!(
+        "Final system: {bodies:?} in {:?}",
+        Instant::now() - start_direct
+    );
 
-    let universe: System = System::from_bodies(bodies.as_slice());
+    let mut bodies: Vec<Body> = vec![
+        Body {
+            mass: 1.0,
+            pos: [1.0_f64, 0.0_f64, 0.0_f64],
+            vel: [0.0_f64, 0.0_f64, 0.0_f64],
+        },
+        Body {
+            mass: 1.0,
+            pos: [0.0_f64, 1.0_f64, 0.0_f64],
+            vel: [0.0_f64, 0.0_f64, 0.0_f64],
+        },
+        Body {
+            mass: 1.0,
+            pos: [0.0_f64, 0.0_f64, 1.0_f64],
+            vel: [0.0_f64, 0.0_f64, 0.0_f64],
+        },
+    ];
+    let resolution: f64 = 0.1_f64;
+    println!("Simulating with fresh system using Barnes-Hut");
+    let start_bh: Instant = Instant::now();
+    barnes_hut::simulate(&mut bodies, dt, total_time, resolution);
+    println!(
+        "Final Barnes-Hut: {:?}\nTime taken: {:?}",
+        bodies,
+        Instant::now() - start_bh
+    )
 }
