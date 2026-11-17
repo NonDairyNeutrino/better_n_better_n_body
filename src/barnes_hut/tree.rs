@@ -123,7 +123,11 @@ mod test {
 
     /// Number of levels below `tree` (a lone leaf has depth 0).
     fn depth(tree: &Tree) -> usize {
-        tree.children.iter().map(|c| 1 + depth(c)).max().unwrap_or(0)
+        tree.children
+            .iter()
+            .map(|c| 1 + depth(c))
+            .max()
+            .unwrap_or(0)
     }
 
     /// `scattered(n)` with distinct masses, so mass weighting actually matters.
@@ -143,7 +147,11 @@ mod test {
         assert!(tree.is_leaf());
         assert_eq!(tree.mass, 0.0);
         assert!(tree.system.bodies.is_empty());
-        assert!(tree.com.iter().all(|x| x.is_finite()), "com was {:?}", tree.com);
+        assert!(
+            tree.com.iter().all(|x| x.is_finite()),
+            "com was {:?}",
+            tree.com
+        );
     }
 
     /// Most octants of a real tree are empty, so empty leaves are everywhere.
@@ -344,26 +352,38 @@ mod test {
         let mut root = System::new(ORIGIN, 1.0);
         root.add_bodies(&bodies);
         let tree = Tree::new(root);
-        let sizes: Vec<usize> = leaves(&tree).iter().map(|l| l.system.bodies.len()).collect();
+        let sizes: Vec<usize> = leaves(&tree)
+            .iter()
+            .map(|l| l.system.bodies.len())
+            .collect();
         assert_eq!(sizes.iter().sum::<usize>(), 3);
         assert!(sizes.contains(&2), "leaf sizes were {sizes:?}");
     }
 
+    /// A leaf that merges two bodies acts as one point mass: their total mass,
+    /// at their mass-weighted center. Same hand-built geometry as the test above
+    /// (distinct bodies 1e-11 apart; exact coincidence is outside the input
+    /// contract). The expected com is 3 * 1e-11 / 5 = 6e-12, not the unweighted
+    /// midpoint 5e-12, so the check is on the weighting.
     #[test]
-    fn coincident_bodies_terminate_in_a_shared_leaf() {
+    fn a_merged_leaf_acts_as_one_point_mass() {
         let bodies = [
             body_with(2.0, 0.0, 0.0, 0.0),
-            body_with(3.0, 0.0, 0.0, 0.0),
-            body_at(1.0, 1.0, 1.0),
+            body_with(3.0, 1e-11, 0.0, 0.0),
+            body_at(0.5, 0.5, 0.5),
         ];
-        let tree = Tree::new(System::from_bodies(&bodies));
+        let mut root = System::new(ORIGIN, 1.0);
+        root.add_bodies(&bodies);
+        let tree = Tree::new(root);
         let pair = leaves(&tree)
             .into_iter()
             .find(|l| l.system.bodies.len() == 2)
-            .expect("the coincident pair should share a leaf");
-        // the shared leaf acts as one point mass
+            .expect("the close pair should share a leaf");
         assert!(close(pair.mass, 5.0));
-        assert!(close3(pair.com, [0.0, 0.0, 0.0]));
+        // `close3` would pass here for any com: everything is below its 1e-9 tolerance
+        assert!((pair.com[0] - 6e-12).abs() < 1e-18, "com was {:?}", pair.com);
+        assert_eq!(pair.com[1], 0.0);
+        assert_eq!(pair.com[2], 0.0);
     }
 
     /// Same hand-built geometry as the test above, but the gap is 1e-9, ten
@@ -387,21 +407,75 @@ mod test {
         );
     }
 
-    /// A coincident pair is the worst case: it can only be stopped by the
-    /// resolution limit. In a root of half-width 1 the cell diagonal drops
-    /// below 1e-10 after about log2(2*sqrt(3) / 1e-10) = 35 halvings, so the
-    /// depth is bounded and lands close to that figure.
+    /// A pair too close to separate is the worst case: only the resolution
+    /// limit stops it. In a root of half-width 1 the cell diagonal drops below
+    /// 1e-10 after about log2(2*sqrt(3) / 1e-10) = 35 halvings, so the depth is
+    /// bounded and lands close to that figure. (The pair is 1e-11 apart, not
+    /// coincident: exact coincidence is outside the input contract.)
     #[test]
     fn recursion_depth_is_set_by_the_resolution_limit() {
         let bodies = [
             body_at(0.0, 0.0, 0.0),
-            body_at(0.0, 0.0, 0.0),
+            body_at(1e-11, 0.0, 0.0),
             body_at(0.5, 0.5, 0.5),
         ];
         let mut root = System::new(ORIGIN, 1.0);
         root.add_bodies(&bodies);
         let d = depth(&Tree::new(root));
         assert!((33..=37).contains(&d), "depth was {d}");
+    }
+
+    // -------------------------------------------------------------- accel_at
+
+    /// Relative difference between two vectors. G is ~1e-11, so an absolute
+    /// tolerance like `close3`'s would pass for any vector.
+    fn rel_diff(a: Vec3, b: Vec3) -> f64 {
+        let diff: f64 = (0..3).map(|k| (a[k] - b[k]).powi(2)).sum::<f64>().sqrt();
+        let size: f64 = (0..3).map(|k| b[k].powi(2)).sum::<f64>().sqrt();
+        diff / size
+    }
+
+    /// A two-body cluster seen from far away. The root cell has width 2 and the
+    /// target sits about 9.75 from the cluster's center of mass, so the
+    /// width/distance ratio is about 0.205. θ = 0.25 is just above that (accept
+    /// the node as one point mass) and θ = 0.15 is below it (open it and sum the
+    /// bodies). The expected answers are built from `gravity` directly, so this
+    /// pins the exact switch-over point, not just the trend.
+    #[test]
+    fn a_node_is_accepted_exactly_when_width_over_distance_is_below_theta() {
+        let bodies = [
+            body_with(1.0, -0.5, -0.5, -0.5),
+            body_with(3.0, 0.5, 0.5, 0.5),
+        ];
+        let mut root = System::new(ORIGIN, 1.0);
+        root.add_bodies(&bodies);
+        let tree = Tree::new(root);
+        assert!(!tree.is_leaf());
+        let target = [10.0, 0.1, 0.2];
+
+        let exact = {
+            let a = gravity(&bodies[0], &target);
+            let b = gravity(&bodies[1], &target);
+            [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+        };
+        let as_point = gravity(&body_with(4.0, 0.25, 0.25, 0.25), &target);
+        // the two answers must differ, or the test cannot tell them apart
+        assert!(rel_diff(as_point, exact) > 1e-4);
+
+        let accepted = tree.accel_at(&target, 0.25);
+        assert!(rel_diff(accepted, as_point) < 1e-9, "should be the point mass");
+
+        let opened = tree.accel_at(&target, 0.15);
+        assert!(rel_diff(opened, exact) < 1e-9, "should be the exact sum");
+    }
+
+    /// A target that is itself in the tree must not feel itself.
+    #[test]
+    fn a_body_in_the_tree_feels_only_the_others() {
+        let bodies = [body_with(2.0, -1.0, 0.0, 0.0), body_with(3.0, 1.0, 0.5, 0.25)];
+        let tree = Tree::new(System::from_bodies(&bodies));
+        let felt = tree.accel_at(&bodies[0].pos, 0.0);
+        assert!(rel_diff(felt, gravity(&bodies[1], &bodies[0].pos)) < 1e-9);
     }
 
     // ----------------------------------------------------------- should_split
