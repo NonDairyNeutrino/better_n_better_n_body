@@ -1,4 +1,4 @@
-use crate::shared::{System, Vec3};
+use crate::shared::{Body, ORIGIN, System, Vec3, gravity};
 
 const MIN_CELL_SIZE: f64 = 1e-10;
 const DIAGONAL: f64 = 3.4641016151377544; // 2 * sqrt(3)
@@ -41,6 +41,51 @@ impl<'a> Tree<'a> {
 
     fn is_leaf(&self) -> bool {
         self.children.is_empty()
+    }
+
+    pub fn accel_at(&self, pos: &Vec3, resolution: f64) -> Vec3 {
+        // if there's no mass, there's no acceleration due to gravity in this region
+        if self.mass == 0.0 {
+            return ORIGIN;
+        }
+
+        // if this node is a leaf, it has one body that causes all the gravitational acceleration
+        if self.is_leaf() {
+            let only_body: &Body = self.system.bodies[0];
+            if only_body.pos != *pos {
+                return gravity(only_body, pos);
+            } else {
+                return ORIGIN;
+            }
+        }
+
+        // if this region is far enough away, treat it as a point mass
+        let width: f64 = 2.0_f64 * self.system.hw;
+        let distance: f64 = self
+            .com
+            .iter()
+            .zip(pos)
+            .map(|xy| (xy.0 - xy.1).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        if width <= resolution * distance {
+            let body: Body = Body {
+                mass: self.mass,
+                pos: self.com,
+                ..Body::new()
+            };
+            return gravity(&body, pos);
+        }
+
+        // if this region is close and big enough to the point, then recurse to its children
+        let mut acc: Vec3 = ORIGIN;
+        for child in self.children.iter() {
+            let local_acc: Vec3 = child.accel_at(pos, resolution);
+            for (a, la) in acc.iter_mut().zip(local_acc) {
+                *a += la;
+            }
+        }
+        return acc;
     }
 }
 
