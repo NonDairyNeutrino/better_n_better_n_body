@@ -4,7 +4,7 @@ mod system;
 pub use body::Body;
 pub use system::System;
 
-pub const G: f64 = 6.67 * 1e-11;
+pub const G: f64 = 1.0_f64; // non-dimensionalized, otherwise 6.67 * 1e-11 in SI
 pub type Vec3 = [f64; 3];
 pub const ORIGIN: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
 
@@ -17,6 +17,26 @@ pub fn gravity(object: &Body, pos: &Vec3) -> Vec3 {
     }
 
     return grav;
+}
+
+// standard LCG constants
+const A: u64 = 6364136223846793005;
+const B: u64 = 1442695040888963407;
+// C = 2^-53
+const C: f64 = 1.1102230246251565e-16;
+
+pub struct RNG {
+    state: u64,
+}
+impl RNG {
+    pub fn new(state: u64) -> RNG {
+        return RNG { state };
+    }
+    // Linear-Congruentional Generator
+    pub fn rand(&mut self) -> f64 {
+        self.state = self.state.wrapping_mul(A).wrapping_add(B);
+        return ((self.state >> 11) as f64) * C;
+    }
 }
 
 #[cfg(test)]

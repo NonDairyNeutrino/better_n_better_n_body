@@ -1,5 +1,7 @@
+use std::array;
+
 /// This is the docstring for Object
-use crate::shared::Vec3;
+use crate::shared::{RNG, Vec3};
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Body {
     pub mass: f64,
@@ -14,6 +16,12 @@ impl Body {
             vel: [0f64, 0f64, 0f64],
             mass: 1f64,
         };
+    }
+    pub fn rand(rng: &mut RNG, half_width: f64) -> Body {
+        let mass: f64 = rand_positive(rng, half_width);
+        let pos: Vec3 = rand_vec3(rng, half_width);
+        let vel: Vec3 = rand_vec3(rng, half_width);
+        return Body { mass, pos, vel };
     }
     /// Calculates the Euclidean distance between an object and a position
     pub fn distance(&self, pos: &Vec3) -> f64 {
@@ -31,6 +39,17 @@ impl Body {
             self.pos[i] += self.vel[i] * dt;
         }
     }
+}
+
+fn rand_positive(rng: &mut RNG, half_width: f64) -> f64 {
+    half_width * (1.0_f64 - rng.rand())
+}
+fn rand_vec3(rng: &mut RNG, half_width: f64) -> Vec3 {
+    let mut r: Vec3 = array::from_fn(|_| rng.rand());
+    for ri in r.iter_mut() {
+        *ri = half_width * (2.0_f64 * *ri - 1.0_f64);
+    }
+    return r;
 }
 
 #[cfg(test)]
