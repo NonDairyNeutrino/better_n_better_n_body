@@ -8,6 +8,7 @@ pub const G: f64 = 1.0_f64; // non-dimensionalized, otherwise 6.67 * 1e-11 in SI
 pub type Vec3 = [f64; 3];
 pub const ORIGIN: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
 
+// -------------------------------------------------------------------------------- gravity
 pub fn gravity(object: &Body, pos: &Vec3) -> Vec3 {
     let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
     let mut grav: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
@@ -19,6 +20,7 @@ pub fn gravity(object: &Body, pos: &Vec3) -> Vec3 {
     return grav;
 }
 
+// -------------------------------------------------------------------------------------RNG
 // standard LCG constants
 const A: u64 = 6364136223846793005;
 const B: u64 = 1442695040888963407;
@@ -38,7 +40,7 @@ impl RNG {
         return ((self.state >> 11) as f64) * C;
     }
 }
-
+// -----------------------------------------------------------------------------------tests
 #[cfg(test)]
 pub mod test_util {
     use super::*;

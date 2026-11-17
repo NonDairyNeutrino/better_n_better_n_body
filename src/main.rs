@@ -1,63 +1,31 @@
 mod barnes_hut;
 mod direct;
 mod shared;
-use shared::{Body, System};
-use std::time::Instant;
+use shared::Body;
+use std::{array::from_fn, time::Instant};
+
+use crate::shared::RNG;
 
 fn main() {
-    let dt: f64 = 0.01; // seconds
-    let total_time: f64 = 1000.0f64;
-    let mut bodies: Vec<Body> = vec![
-        Body {
-            mass: 1.0,
-            pos: [1.0_f64, 0.0_f64, 0.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-        Body {
-            mass: 1.0,
-            pos: [0.0_f64, 1.0_f64, 0.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-        Body {
-            mass: 1.0,
-            pos: [0.0_f64, 0.0_f64, 1.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-    ];
+    const TIME_STEP: f64 = 0.01;
+    const TOTAL_TIME: f64 = 1.0f64;
+    const NBODIES: usize = 10_000;
+    const HALF_WIDTH: f64 = 1.0;
+    let mut bodies: Vec<Body> =
+        from_fn::<Body, NBODIES, _>(|_| Body::rand(&mut RNG::new(0), HALF_WIDTH)).to_vec();
 
     // direct simulation
-    println!("Starting universe: {bodies:?}");
+    // println!("Starting universe: {bodies:?}");
     let start_direct: Instant = Instant::now();
-    direct::simulate(&mut bodies, dt, total_time);
-    println!(
-        "Final system: {bodies:?} in {:?}",
-        Instant::now() - start_direct
-    );
+    direct::simulate(&mut bodies, TIME_STEP, TOTAL_TIME);
+    println!("direct time: {:?}", Instant::now() - start_direct);
 
-    let mut bodies: Vec<Body> = vec![
-        Body {
-            mass: 1.0,
-            pos: [1.0_f64, 0.0_f64, 0.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-        Body {
-            mass: 1.0,
-            pos: [0.0_f64, 1.0_f64, 0.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-        Body {
-            mass: 1.0,
-            pos: [0.0_f64, 0.0_f64, 1.0_f64],
-            vel: [0.0_f64, 0.0_f64, 0.0_f64],
-        },
-    ];
-    let resolution: f64 = 0.1_f64;
+    // Barnes-Hut
+    let mut bodies: Vec<Body> =
+        from_fn::<Body, NBODIES, _>(|_| Body::rand(&mut RNG::new(0), HALF_WIDTH)).to_vec();
+    let resolution: f64 = 0.5_f64;
     println!("Simulating with fresh system using Barnes-Hut");
     let start_bh: Instant = Instant::now();
-    barnes_hut::simulate(&mut bodies, dt, total_time, resolution);
-    println!(
-        "Final Barnes-Hut: {:?}\nTime taken: {:?}",
-        bodies,
-        Instant::now() - start_bh
-    )
+    barnes_hut::simulate(&mut bodies, TIME_STEP, TOTAL_TIME, resolution);
+    println!("Barnes-Hut time: {:?}", Instant::now() - start_bh)
 }
