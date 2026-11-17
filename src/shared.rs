@@ -114,6 +114,68 @@ mod tests {
         assert!(close(g[1] / G, 5.0 / 9.0), "g/G was {}", g[1] / G);
     }
 
+    // -------------------------------------------------------------------- RNG
+
+    fn draws(seed: u64, n: usize) -> Vec<f64> {
+        let mut rng = RNG::new(seed);
+        (0..n).map(|_| rng.rand()).collect()
+    }
+
+    /// Expected values come from an independent implementation (Python integers,
+    /// same recurrence), so this pins the multiplier, the increment, the shift and
+    /// the scale, and cannot pass by re-running the Rust arithmetic.
+    #[test]
+    fn rng_matches_an_independent_implementation() {
+        let expected = [0.07820865487829387, 0.10169876029679303, 0.6053233226252335];
+        let got = draws(0, 3);
+        for (g, e) in got.iter().zip(expected) {
+            assert!((g - e).abs() < 1e-15, "got {g}, expected {e}");
+        }
+    }
+
+    #[test]
+    fn rng_is_reproducible_from_its_seed() {
+        assert_eq!(draws(42, 100), draws(42, 100));
+    }
+
+    #[test]
+    fn rng_seeds_give_different_sequences() {
+        assert_ne!(draws(1, 10), draws(2, 10));
+    }
+
+    #[test]
+    fn rng_draws_are_in_the_half_open_unit_interval() {
+        let v = draws(7, 100_000);
+        assert!(v.iter().all(|&x| (0.0..1.0).contains(&x)));
+    }
+
+    /// A generator stuck on one value still passes every range check, so this
+    /// asks for 1000 distinct draws.
+    #[test]
+    fn rng_does_not_repeat_itself() {
+        let mut v = draws(7, 1000);
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v.dedup();
+        assert_eq!(v.len(), 1000);
+    }
+
+    /// 100k draws in 10 equal bins: about 10k each, with a standard deviation of
+    /// about 95, so 9.5k..10.5k is a wide margin. This is what catches a
+    /// generator that is always near 0 (the integer-division bug) or lopsided.
+    #[test]
+    fn rng_draws_are_spread_evenly() {
+        let n = 100_000;
+        let mut bins = [0usize; 10];
+        for x in draws(7, n) {
+            bins[(x * 10.0) as usize] += 1;
+        }
+        for (i, count) in bins.iter().enumerate() {
+            assert!((9_500..=10_500).contains(count), "bin {i} had {count}");
+        }
+        let mean: f64 = draws(7, n).iter().sum::<f64>() / n as f64;
+        assert!((mean - 0.5).abs() < 0.01, "mean was {mean}");
+    }
+
     #[test]
     fn gravity_has_the_right_components_in_3d() {
         // source at (1, 2, 2): distance 3, so |g| = G/9 along (1/3, 2/3, 2/3)
