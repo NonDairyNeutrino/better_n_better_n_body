@@ -10,7 +10,7 @@ pub struct Tree<'a> {
     children: Vec<Tree<'a>>,
 }
 impl<'a> Tree<'a> {
-    pub fn new(system: System<'a>) -> Tree {
+    pub fn new(system: System<'a>) -> Tree<'a> {
         let mass: f64 = system.find_total_mass();
         let com: Vec3 = system.find_com();
 
@@ -381,7 +381,11 @@ mod test {
             .expect("the close pair should share a leaf");
         assert!(close(pair.mass, 5.0));
         // `close3` would pass here for any com: everything is below its 1e-9 tolerance
-        assert!((pair.com[0] - 6e-12).abs() < 1e-18, "com was {:?}", pair.com);
+        assert!(
+            (pair.com[0] - 6e-12).abs() < 1e-18,
+            "com was {:?}",
+            pair.com
+        );
         assert_eq!(pair.com[1], 0.0);
         assert_eq!(pair.com[2], 0.0);
     }
@@ -463,7 +467,10 @@ mod test {
         assert!(rel_diff(as_point, exact) > 1e-4);
 
         let accepted = tree.accel_at(&target, 0.25);
-        assert!(rel_diff(accepted, as_point) < 1e-9, "should be the point mass");
+        assert!(
+            rel_diff(accepted, as_point) < 1e-9,
+            "should be the point mass"
+        );
 
         let opened = tree.accel_at(&target, 0.15);
         assert!(rel_diff(opened, exact) < 1e-9, "should be the exact sum");
@@ -472,7 +479,10 @@ mod test {
     /// A target that is itself in the tree must not feel itself.
     #[test]
     fn a_body_in_the_tree_feels_only_the_others() {
-        let bodies = [body_with(2.0, -1.0, 0.0, 0.0), body_with(3.0, 1.0, 0.5, 0.25)];
+        let bodies = [
+            body_with(2.0, -1.0, 0.0, 0.0),
+            body_with(3.0, 1.0, 0.5, 0.25),
+        ];
         let tree = Tree::new(System::from_bodies(&bodies));
         let felt = tree.accel_at(&bodies[0].pos, 0.0);
         assert!(rel_diff(felt, gravity(&bodies[1], &bodies[0].pos)) < 1e-9);
