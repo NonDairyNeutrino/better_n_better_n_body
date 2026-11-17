@@ -5,11 +5,12 @@ pub use body::Body;
 pub use system::System;
 
 pub const G: f64 = 6.67 * 1e-11;
-pub const ORIGIN: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
+pub type Vec3 = [f64; 3];
+pub const ORIGIN: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
 
-pub fn gravity(object: &Body, pos: &[f64; 3]) -> [f64; 3] {
+pub fn gravity(object: &Body, pos: &Vec3) -> Vec3 {
     let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
-    let mut grav: [f64; 3] = [0.0_f64, 0.0_f64, 0.0_f64];
+    let mut grav: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
 
     for dim in 0..grav.len() {
         grav[dim] = strength * (object.pos[dim] - pos[dim]);
@@ -19,7 +20,7 @@ pub fn gravity(object: &Body, pos: &[f64; 3]) -> [f64; 3] {
 }
 
 #[cfg(test)]
-mod test_util {
+pub mod test_util {
     use super::*;
 
     const TOL: f64 = 1e-9;
@@ -30,7 +31,7 @@ mod test_util {
         (a - b).abs() < TOL
     }
 
-    pub fn close3(a: [f64; 3], b: [f64; 3]) -> bool {
+    pub fn close3(a: Vec3, b: Vec3) -> bool {
         a.iter().zip(b.iter()).all(|(x, y)| close(*x, *y))
     }
 
@@ -51,7 +52,7 @@ mod test_util {
     }
 
     /// True if `pos` lies inside the cube (`center`, `hw`) on every axis.
-    pub fn inside(center: [f64; 3], hw: f64, pos: [f64; 3]) -> bool {
+    pub fn inside(center: Vec3, hw: f64, pos: Vec3) -> bool {
         (0..3).all(|d| (pos[d] - center[d]).abs() <= hw + TOL)
     }
 

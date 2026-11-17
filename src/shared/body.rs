@@ -1,9 +1,10 @@
 /// This is the docstring for Object
+use crate::shared::Vec3;
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Body {
     pub mass: f64,
-    pub pos: [f64; 3],
-    pub vel: [f64; 3],
+    pub pos: Vec3,
+    pub vel: Vec3,
 }
 impl Body {
     /// Creates a new physical Object
@@ -15,7 +16,7 @@ impl Body {
         };
     }
     /// Calculates the Euclidean distance between an object and a position
-    pub fn distance(&self, pos: &[f64; 3]) -> f64 {
+    pub fn distance(&self, pos: &Vec3) -> f64 {
         self.pos
             .iter()
             .zip(pos)
@@ -23,7 +24,7 @@ impl Body {
             .sum::<f64>()
             .sqrt()
     }
-    pub fn accelerate(&mut self, acc: &[f64; 3], dt: f64) {
+    pub fn accelerate(&mut self, acc: &Vec3, dt: f64) {
         // evolve via symplectic-euler
         for (i, a) in acc.iter().enumerate() {
             self.vel[i] += a * dt;
