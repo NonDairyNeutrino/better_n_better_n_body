@@ -58,8 +58,6 @@ mod tests {
     use super::*;
     use crate::shared::ORIGIN;
 
-    const TOL: f64 = 1e-9;
-
     #[test]
     fn distance_is_euclidean() {
         let body = Body {
@@ -119,7 +117,10 @@ mod tests {
         let bodies = random_bodies(3, n, size);
         let max_pos = bodies.iter().flat_map(|b| b.pos).fold(f64::MIN, f64::max);
         let min_pos = bodies.iter().flat_map(|b| b.pos).fold(f64::MAX, f64::min);
-        assert!(max_pos > 0.99 * size && min_pos < -0.99 * size, "{min_pos}..{max_pos}");
+        assert!(
+            max_pos > 0.99 * size && min_pos < -0.99 * size,
+            "{min_pos}..{max_pos}"
+        );
 
         // symmetric about 0 (std of the mean is about 0.58*size/sqrt(n) = 0.015;
         // 0.1 is a wide margin), and mass is uniform on (0, size] so its mean is size/2
@@ -134,7 +135,11 @@ mod tests {
     #[test]
     fn rand_scales_with_the_cube_size() {
         let small = random_bodies(3, 1_000, 0.01);
-        assert!(small.iter().all(|b| b.mass <= 0.01 && b.pos.iter().all(|x| x.abs() < 0.01)));
+        assert!(
+            small
+                .iter()
+                .all(|b| b.mass <= 0.01 && b.pos.iter().all(|x| x.abs() < 0.01))
+        );
         let big = random_bodies(3, 1_000, 1000.0);
         assert!(big.iter().any(|b| b.pos.iter().any(|x| x.abs() > 100.0)));
     }
