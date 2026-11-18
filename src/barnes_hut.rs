@@ -20,6 +20,19 @@ fn simulate_step(bodies: &mut [Body], dt: f64, resolution: f64) {
     }
 }
 
+/// Advances `system` by `total_time` in steps of `time_step` using Barnes-Hut.
+///
+/// `resolution` is the opening angle θ: a cell is treated as one point mass when
+/// `width <= resolution * distance`. θ = 0 reproduces direct summation; larger
+/// values are faster and less accurate.
+///
+/// # Input contract
+/// These are assumed, not checked:
+/// - all masses are positive;
+/// - no two bodies share a position (self-skip compares positions);
+/// - bodies are at least 1e-10 apart (closer ones merge into one point mass);
+/// - no body lies exactly on a cell boundary;
+/// - units are nondimensionalized (G = 1).
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64, resolution: f64) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
     for _ in 0..nsteps {
