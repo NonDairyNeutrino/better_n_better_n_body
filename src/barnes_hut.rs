@@ -22,7 +22,6 @@ fn simulate_step(bodies: &mut [Body], dt: f64, resolution: f64) {
 
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64, resolution: f64) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
-    println!("Stepping {nsteps} times");
     for _ in 0..nsteps {
         simulate_step(system, time_step, resolution);
     }
@@ -105,7 +104,10 @@ mod tests {
     #[test]
     fn a_large_theta_really_approximates() {
         let err = one_step_error(300, 1.0);
-        assert!(err > 1e-3, "θ=1 error was only {err:e}; nothing is being approximated");
+        assert!(
+            err > 1e-3,
+            "θ=1 error was only {err:e}; nothing is being approximated"
+        );
     }
 
     #[test]

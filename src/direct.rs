@@ -30,7 +30,6 @@ pub fn simulate_step(system: &mut [Body], time_step: f64) {
 
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
-    println!("Stepping {nsteps} times");
     for _ in 0..nsteps {
         simulate_step(system, time_step);
     }
