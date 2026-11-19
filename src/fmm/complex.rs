@@ -1,4 +1,7 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::{
+    iter::Sum,
+    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Complex {
@@ -27,6 +30,18 @@ impl Add for Complex {
             re: self.re + rhs.re,
             im: self.im + rhs.im,
         }
+    }
+}
+
+impl Sum for Complex {
+    fn sum<I: Iterator<Item = Complex>>(iter: I) -> Complex {
+        iter.fold(Complex::zero(), |acc, x| acc + x)
+    }
+}
+
+impl<'a> Sum<&'a Complex> for Complex {
+    fn sum<I: Iterator<Item = &'a Complex>>(iter: I) -> Complex {
+        iter.fold(Complex::zero(), |acc, x| acc + *x)
     }
 }
 
