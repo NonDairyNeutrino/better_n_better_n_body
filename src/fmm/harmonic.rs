@@ -1,4 +1,4 @@
-use crate::fmm::complex::Complex;
+use crate::{fmm::complex::Complex, shared::Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SolidHarmonic {
@@ -14,20 +14,20 @@ impl SolidHarmonic {
         let coeffs: Vec<Complex> = vec![Complex::zero(); (p + 1).pow(2)];
         return SolidHarmonic::Irregular(coeffs);
     }
-    fn coeffs(&self) -> &[Complex] {
+    pub fn coeffs(&self) -> &[Complex] {
         match self {
             SolidHarmonic::Regular(v) | SolidHarmonic::Irregular(v) => v,
         }
     }
-    fn coeffs_mut(&mut self) -> &mut [Complex] {
+    pub fn coeffs_mut(&mut self) -> &mut [Complex] {
         match self {
             SolidHarmonic::Regular(v) | SolidHarmonic::Irregular(v) => v,
         }
     }
-    fn get(&self, n: i64, m: i64) -> Complex {
+    pub fn get(&self, n: i64, m: i64) -> Complex {
         assert!(0 <= n, "n must be non-negative, got n={n}");
         assert!(-n <= m && m <= n, "need |m| <= n, got n={n}, m={m}");
-        let idx: usize = (n.pow(2) + n + m) as usize;
+        let idx: usize = to_index(n, m);
         assert!(
             idx < self.coeffs().len(),
             "(n={n}, m={m}) is beyond the order of this solid harmonic"
@@ -35,6 +35,100 @@ impl SolidHarmonic {
         let coeff: Complex = self.coeffs()[idx];
         return coeff;
     }
+    pub fn order(&self) -> usize {
+        return self.coeffs().len().isqrt() - 1;
+    }
+    /// Evaluates the series at `pos`, measured from the expansion center.
+    ///
+    /// Regular:   sum c_nm * r^n     * Y_nm(direction)
+    /// Irregular: sum c_nm * r^-(n+1) * Y_nm(direction)
+    pub fn value(&self, pos: Vec3) -> Complex {
+        let coeffs: &[Complex] = self.coeffs();
+        let r: f64 = pos.iter().map(|d| d * d).sum::<f64>().sqrt();
+
+        if r == 0.0 {
+            return match self {
+                // Only the n = 0 term survives; its Y_00 = 1.
+                SolidHarmonic::Regular(v) => v[0],
+                SolidHarmonic::Irregular(_) => {
+                    panic!("an irregular solid harmonic diverges at its center")
+                }
+            };
+        }
+
+        let bases: Vec<Complex> = harmonics(pos, self.order());
+        let mut val: Complex = Complex::zero();
+        for (idx, (c, y)) in coeffs.iter().zip(bases).enumerate() {
+            let (n, _) = from_index(idx);
+            let scale: f64 = match self {
+                SolidHarmonic::Regular(_) => r.powi(n as i32),
+                SolidHarmonic::Irregular(_) => r.powi(-(n as i32) - 1),
+            };
+            val += *c * y * scale;
+        }
+        return val;
+    }
+}
+
+fn to_index(n: i64, m: i64) -> usize {
+    return (n.pow(2) + n + m) as usize;
+}
+
+fn from_index(idx: usize) -> (i64, i64) {
+    let n: i64 = idx.isqrt() as i64;
+    let m: i64 = (idx as i64) - n.pow(2) - n;
+    return (n, m);
+}
+
+/// Y_n^m(theta, phi) for every 0 <= n <= p, |m| <= n, in `to_index` order.
+/// Depends only on the direction of `pos`, not its length; requires pos != 0.
+///
+/// Y_n^m = Pbar_n^m(cos theta) e^{i m phi},  Y_n^-m = conj(Y_n^m), where
+/// Pbar_n^m = sqrt((n-m)!/(n+m)!) P_n^m uses the Condon-Shortley sign
+/// (-1)^m inside P_n^m. No 4pi/(2n+1) factor.
+fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
+    let [x, y, z] = pos;
+    let r: f64 = (x * x + y * y + z * z).sqrt();
+    let rho: f64 = (x * x + y * y).sqrt();
+    let cos_t: f64 = z / r;
+    let sin_t: f64 = rho / r;
+    // e^{i phi}; on the z-axis phi is undefined and sin_t = 0 kills m != 0.
+    let e_iphi: Complex = if rho == 0.0 {
+        Complex { re: 1.0, im: 0.0 }
+    } else {
+        Complex { re: x / rho, im: y / rho }
+    };
+
+    let mut out: Vec<Complex> = vec![Complex::zero(); (p + 1).pow(2)];
+    let mut pmm: f64 = 1.0; // Pbar_m^m
+    let mut phase: Complex = Complex { re: 1.0, im: 0.0 }; // e^{i m phi}
+
+    for m in 0..=p {
+        let mf: f64 = m as f64;
+        let mut prev2: f64 = 0.0; // Pbar_{n-2}^m
+        let mut prev: f64 = 0.0; // Pbar_{n-1}^m
+        for n in m..=p {
+            let nf: f64 = n as f64;
+            let value: f64 = if n == m {
+                pmm
+            } else if n == m + 1 {
+                (2.0 * mf + 1.0).sqrt() * cos_t * pmm
+            } else {
+                ((2.0 * nf - 1.0) * cos_t * prev
+                    - ((nf - 1.0).powi(2) - mf * mf).sqrt() * prev2)
+                    / (nf * nf - mf * mf).sqrt()
+            };
+            prev2 = prev;
+            prev = value;
+
+            let y_nm: Complex = phase * value;
+            out[to_index(n as i64, m as i64)] = y_nm;
+            out[to_index(n as i64, -(m as i64))] = y_nm.conj();
+        }
+        pmm *= -((2.0 * mf + 1.0) / (2.0 * mf + 2.0)).sqrt() * sin_t;
+        phase = phase * e_iphi;
+    }
+    return out;
 }
 
 #[cfg(test)]
