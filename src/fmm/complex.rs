@@ -343,4 +343,74 @@ mod tests {
         let summed = samples().into_iter().fold(Complex::zero(), |s, a| s + a);
         assert!(close(total, summed));
     }
+
+    // ------------------------------------------------------------------ Sum
+
+    #[test]
+    fn summing_known_values_gives_the_known_total() {
+        let list = [c(1.0, 2.0), c(3.0, -4.0), c(-1.0, 0.0)];
+        assert_eq!(list.iter().sum::<Complex>(), c(3.0, -2.0));
+        assert_eq!(list.iter().copied().sum::<Complex>(), c(3.0, -2.0));
+    }
+
+    #[test]
+    fn summing_nothing_gives_zero() {
+        let none: [Complex; 0] = [];
+        assert_eq!(none.iter().sum::<Complex>(), Complex::zero());
+        assert_eq!(none.iter().copied().sum::<Complex>(), Complex::zero());
+    }
+
+    #[test]
+    fn summing_one_value_gives_that_value() {
+        for a in samples() {
+            assert_eq!([a].iter().sum::<Complex>(), a);
+            assert_eq!([a].iter().copied().sum::<Complex>(), a);
+        }
+    }
+
+    #[test]
+    fn summing_borrowed_and_owned_values_agree_and_match_the_loop() {
+        let list = samples();
+        let mut looped = Complex::zero();
+        for a in &list {
+            looped += *a;
+        }
+        let borrowed: Complex = list.iter().sum();
+        let owned: Complex = list.iter().copied().sum();
+        assert_eq!(borrowed, owned);
+        assert!(close(borrowed, looped));
+    }
+
+    /// Both parts are added: a sum that drops or mixes one part cannot match this,
+    /// because the real and imaginary totals are different numbers.
+    #[test]
+    fn summing_keeps_the_real_and_imaginary_totals_separate() {
+        let list = samples();
+        let want = c(
+            list.iter().map(|z| z.re).sum::<f64>(),
+            list.iter().map(|z| z.im).sum::<f64>(),
+        );
+        assert!(close(list.iter().sum(), want));
+        assert!(close(list.iter().copied().sum(), want));
+    }
+
+    #[test]
+    fn the_order_of_the_terms_does_not_matter() {
+        let forward: Complex = samples().iter().sum();
+        let backward: Complex = samples().iter().rev().sum();
+        assert!(close(forward, backward));
+    }
+
+    #[test]
+    fn a_sum_works_at_the_end_of_an_iterator_chain() {
+        // the shape `value` uses: pair things up, multiply, add them all
+        let a = samples();
+        let b: Vec<Complex> = samples().into_iter().rev().collect();
+        let total: Complex = a.iter().zip(b.iter()).map(|(x, y)| *x * *y).sum();
+        let mut looped = Complex::zero();
+        for i in 0..a.len() {
+            looped += a[i] * b[i];
+        }
+        assert!(close(total, looped));
+    }
 }
