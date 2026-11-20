@@ -1,6 +1,8 @@
 mod complex;
 mod harmonic;
 mod operators;
+#[cfg(test)]
+mod test_util;
 mod tree;
 use crate::shared::{Body, System, Vec3};
 use tree::FmmTree;

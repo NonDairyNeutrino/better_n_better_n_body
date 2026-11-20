@@ -1,5 +1,6 @@
 mod barnes_hut;
 mod direct;
+mod fmm;
 mod shared;
 use shared::Body;
 use std::{array::from_fn, time::Instant};
@@ -22,7 +23,6 @@ fn main() {
     println!("direct time: {:?}", Instant::now() - start_direct);
 
     // Barnes-Hut
-    // let resolution: f64 = 0.5_f64;
     for resolution in [0.4_f64, 0.6, 0.8, 1.0] {
         println!("Simulating using Barnes-Hut with cell limit theta = {resolution}");
         let start_bh: Instant = Instant::now();

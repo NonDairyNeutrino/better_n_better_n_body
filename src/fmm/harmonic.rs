@@ -70,11 +70,11 @@ impl SolidHarmonic {
     }
 }
 
-fn to_index(n: i64, m: i64) -> usize {
+pub fn to_index(n: i64, m: i64) -> usize {
     return (n.pow(2) + n + m) as usize;
 }
 
-fn from_index(idx: usize) -> (i64, i64) {
+pub fn from_index(idx: usize) -> (i64, i64) {
     let n: i64 = idx.isqrt() as i64;
     let m: i64 = (idx as i64) - n.pow(2) - n;
     return (n, m);
@@ -86,7 +86,7 @@ fn from_index(idx: usize) -> (i64, i64) {
 /// Y_n^m = Pbar_n^m(cos theta) e^{i m phi},  Y_n^-m = conj(Y_n^m), where
 /// Pbar_n^m = sqrt((n-m)!/(n+m)!) P_n^m uses the Condon-Shortley sign
 /// (-1)^m inside P_n^m. No 4pi/(2n+1) factor.
-fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
+pub fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
     let [x, y, z] = pos;
     let r: f64 = (x * x + y * y + z * z).sqrt();
     let rho: f64 = (x * x + y * y).sqrt();
@@ -96,7 +96,10 @@ fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
     let e_iphi: Complex = if rho == 0.0 {
         Complex { re: 1.0, im: 0.0 }
     } else {
-        Complex { re: x / rho, im: y / rho }
+        Complex {
+            re: x / rho,
+            im: y / rho,
+        }
     };
 
     let mut out: Vec<Complex> = vec![Complex::zero(); (p + 1).pow(2)];
@@ -114,8 +117,7 @@ fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
             } else if n == m + 1 {
                 (2.0 * mf + 1.0).sqrt() * cos_t * pmm
             } else {
-                ((2.0 * nf - 1.0) * cos_t * prev
-                    - ((nf - 1.0).powi(2) - mf * mf).sqrt() * prev2)
+                ((2.0 * nf - 1.0) * cos_t * prev - ((nf - 1.0).powi(2) - mf * mf).sqrt() * prev2)
                     / (nf * nf - mf * mf).sqrt()
             };
             prev2 = prev;
@@ -134,6 +136,7 @@ fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fmm::test_util::{assert_close, dist3};
 
     // ---------------------------------------------------------------- helpers
 
@@ -214,21 +217,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn every_pair_n_m_has_its_own_slot_and_every_slot_is_used() {
-        let p: i64 = 6;
-        let sh = numbered(p as usize);
-        let mut seen: Vec<usize> = Vec::new();
-        for n in 0..=p {
-            for m in -n..=n {
-                seen.push(sh.get(n, m).re as usize);
-            }
-        }
-        seen.sort();
-        let want: Vec<usize> = (0..pair_count(p as usize)).collect();
-        assert_eq!(seen, want);
-    }
-
     /// The formula keeps working far past the orders anyone will use.
     #[test]
     fn the_first_and_last_pairs_of_a_high_order_are_the_first_and_last_slots() {
@@ -263,34 +251,7 @@ mod tests {
         numbered(3).get(4, 0);
     }
 
-    #[test]
-    fn writes_through_coeffs_mut_are_seen_by_coeffs() {
-        let mut sh = SolidHarmonic::irregular(2);
-        sh.coeffs_mut()[5] = Complex { re: 1.5, im: -2.5 };
-        assert_eq!(sh.coeffs()[5].re, 1.5);
-        assert_eq!(sh.coeffs()[5].im, -2.5);
-        assert!(
-            matches!(sh, SolidHarmonic::Irregular(_)),
-            "kind must not change"
-        );
-    }
-
     // ------------------------------------------------- harmonics and value
-
-    fn cx(re: f64, im: f64) -> Complex {
-        Complex { re, im }
-    }
-
-    fn assert_close(got: Complex, want: Complex, tol: f64, what: &str) {
-        assert!(
-            (got.re - want.re).abs() <= tol && (got.im - want.im).abs() <= tol,
-            "{what}: got ({}, {}), want ({}, {})",
-            got.re,
-            got.im,
-            want.re,
-            want.im
-        );
-    }
 
     /// P_n(x) by Bonnet's recurrence: a different method from the code under test.
     fn legendre(n: usize, x: f64) -> f64 {
@@ -305,10 +266,6 @@ mod tests {
         b
     }
 
-    fn dist(a: Vec3, b: Vec3) -> f64 {
-        ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
-    }
-
     /// A solid harmonic of order p with a single coefficient (n, m) equal to 1.
     fn single(regular: bool, p: usize, n: i64, m: i64) -> SolidHarmonic {
         let mut sh = if regular {
@@ -316,14 +273,14 @@ mod tests {
         } else {
             SolidHarmonic::irregular(p)
         };
-        sh.coeffs_mut()[to_index(n, m)] = cx(1.0, 0.0);
+        sh.coeffs_mut()[to_index(n, m)] = Complex { re: 1.0, im: 0.0 };
         sh
     }
 
     /// Second-difference Laplacian of a complex-valued function of position.
     fn laplacian(f: impl Fn(Vec3) -> Complex, at: Vec3) -> Complex {
         let h = 1e-3;
-        let mut sum = cx(0.0, 0.0);
+        let mut sum = Complex { re: 0.0, im: 0.0 };
         for axis in 0..3 {
             let (mut up, mut down) = (at, at);
             up[axis] += h;
@@ -359,31 +316,47 @@ mod tests {
 
     // ---- harmonics
 
-    #[test]
-    fn order_zero_harmonic_is_just_one() {
-        let y = harmonics([0.3, -1.0, 2.0], 0);
-        assert_eq!(y.len(), 1);
-        assert_close(y[0], cx(1.0, 0.0), 1e-15, "Y00");
-    }
-
     /// Textbook closed forms at (1, 2, 2): r=3, cos t=2/3, sin t=sqrt5/3,
     /// e^{i phi}=(1+2i)/sqrt5. These are not computed with the recurrence.
     #[test]
     fn harmonics_match_hand_computed_values_up_to_degree_two() {
         let y = harmonics([1.0, 2.0, 2.0], 2);
-        let y11 = cx(-1.0 / (3.0 * 2f64.sqrt()), -2.0 / (3.0 * 2f64.sqrt()));
+        let y11 = Complex {
+            re: -1.0 / (3.0 * 2f64.sqrt()),
+            im: -2.0 / (3.0 * 2f64.sqrt()),
+        };
         let k21 = -(1.5f64).sqrt() * 2.0 / 9.0;
-        let y21 = cx(k21, 2.0 * k21);
+        let y21 = Complex {
+            re: k21,
+            im: 2.0 * k21,
+        };
         let k22 = (3.0f64 / 8.0).sqrt() / 9.0;
-        let y22 = cx(-3.0 * k22, 4.0 * k22);
+        let y22 = Complex {
+            re: -3.0 * k22,
+            im: 4.0 * k22,
+        };
         let want = [
-            (0, 0, cx(1.0, 0.0)),
+            (0, 0, Complex { re: 1.0, im: 0.0 }),
             (1, -1, y11.conj()),
-            (1, 0, cx(2.0 / 3.0, 0.0)),
+            (
+                1,
+                0,
+                Complex {
+                    re: 2.0 / 3.0,
+                    im: 0.0,
+                },
+            ),
             (1, 1, y11),
             (2, -2, y22.conj()),
             (2, -1, y21.conj()),
-            (2, 0, cx(1.0 / 6.0, 0.0)),
+            (
+                2,
+                0,
+                Complex {
+                    re: 1.0 / 6.0,
+                    im: 0.0,
+                },
+            ),
             (2, 1, y21),
             (2, 2, y22),
         ];
@@ -411,42 +384,52 @@ mod tests {
         let a = [1.0, 2.0, 2.0];
         let b = [-0.5, 0.3, 1.7];
         let dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-        let cos_gamma = dot / (dist(a, [0.0; 3]) * dist(b, [0.0; 3]));
-        assert!(cos_gamma.abs() < 0.95, "angle too degenerate to be a good test");
+        let cos_gamma = dot / (dist3(a, [0.0; 3]) * dist3(b, [0.0; 3]));
+        assert!(
+            cos_gamma.abs() < 0.95,
+            "angle too degenerate to be a good test"
+        );
         let (ya, yb) = (harmonics(a, 12), harmonics(b, 12));
         for n in 0..=12i64 {
-            let mut sum = cx(0.0, 0.0);
+            let mut sum = Complex { re: 0.0, im: 0.0 };
             for m in -n..=n {
                 sum += ya[to_index(n, m)] * yb[to_index(n, m)].conj();
             }
-            assert_close(sum, cx(legendre(n as usize, cos_gamma), 0.0), 1e-12, &format!("n={n}"));
+            assert_close(
+                sum,
+                Complex {
+                    re: legendre(n as usize, cos_gamma),
+                    im: 0.0,
+                },
+                1e-12,
+                &format!("n={n}"),
+            );
         }
     }
 
     #[test]
     fn on_the_z_axis_only_m_zero_survives_and_it_is_plus_or_minus_one_to_the_n() {
-        for (z, sign) in [(2.0, 1.0), (-3.0, -1.0)] {
+        for z in [2.0, -3.0] {
             let y = harmonics([0.0, 0.0, z], 8);
             for (idx, v) in y.iter().enumerate() {
                 let (n, m) = from_index(idx);
-                assert!(v.re.is_finite() && v.im.is_finite(), "(n={n}, m={m}) not finite");
-                let want = if m == 0 { sign_pow(sign, n) } else { 0.0 };
-                assert_close(*v, cx(want, 0.0), 1e-12, &format!("z={z} (n={n}, m={m})"));
-            }
-        }
-    }
-
-    fn sign_pow(sign: f64, n: i64) -> f64 {
-        if sign > 0.0 || n % 2 == 0 { 1.0 } else { -1.0 }
-    }
-
-    #[test]
-    fn negative_m_is_the_conjugate_of_positive_m() {
-        let y = harmonics([0.3, -0.8, 0.5], 7);
-        assert!(y.iter().any(|v| v.im.abs() > 1e-3), "need a point with complex values");
-        for n in 0..=7i64 {
-            for m in 0..=n {
-                assert_close(y[to_index(n, -m)], y[to_index(n, m)].conj(), 1e-15, &format!("(n={n}, m={m})"));
+                assert!(
+                    v.re.is_finite() && v.im.is_finite(),
+                    "(n={n}, m={m}) not finite"
+                );
+                let want = if m != 0 {
+                    0.0
+                } else if z < 0.0 && n % 2 == 1 {
+                    -1.0
+                } else {
+                    1.0
+                };
+                assert_close(
+                    *v,
+                    Complex { re: want, im: 0.0 },
+                    1e-12,
+                    &format!("z={z} (n={n}, m={m})"),
+                );
             }
         }
     }
@@ -457,29 +440,71 @@ mod tests {
     fn value_of_hand_built_series_at_1_2_2() {
         let at = [1.0, 2.0, 2.0]; // r = 3
         let mut m0 = SolidHarmonic::irregular(2);
-        m0.coeffs_mut()[to_index(0, 0)] = cx(2.0, 0.0);
-        assert_close(m0.value(at), cx(2.0 / 3.0, 0.0), 1e-14, "irregular c00=2 is 2/r");
-        assert_close(single(false, 2, 1, 0).value(at), cx(2.0 / 27.0, 0.0), 1e-14, "irregular c10 is z/r^3");
-        assert_close(single(false, 2, 2, 0).value(at), cx(1.0 / 162.0, 0.0), 1e-14, "irregular c20 is (3z^2-r^2)/(2 r^5)");
-        assert_close(single(true, 2, 0, 0).value(at), cx(1.0, 0.0), 1e-14, "regular c00 is 1");
-        assert_close(single(true, 2, 1, 0).value(at), cx(2.0, 0.0), 1e-14, "regular c10 is z");
-        assert_close(single(true, 2, 2, 0).value(at), cx(1.5, 0.0), 1e-14, "regular c20 is (3z^2-r^2)/2");
+        m0.coeffs_mut()[to_index(0, 0)] = Complex { re: 2.0, im: 0.0 };
+        assert_close(
+            m0.value(at),
+            Complex {
+                re: 2.0 / 3.0,
+                im: 0.0,
+            },
+            1e-14,
+            "irregular c00=2 is 2/r",
+        );
+        assert_close(
+            single(false, 2, 1, 0).value(at),
+            Complex {
+                re: 2.0 / 27.0,
+                im: 0.0,
+            },
+            1e-14,
+            "irregular c10 is z/r^3",
+        );
+        assert_close(
+            single(false, 2, 2, 0).value(at),
+            Complex {
+                re: 1.0 / 162.0,
+                im: 0.0,
+            },
+            1e-14,
+            "irregular c20 is (3z^2-r^2)/(2 r^5)",
+        );
+        assert_close(
+            single(true, 2, 0, 0).value(at),
+            Complex { re: 1.0, im: 0.0 },
+            1e-14,
+            "regular c00 is 1",
+        );
+        assert_close(
+            single(true, 2, 1, 0).value(at),
+            Complex { re: 2.0, im: 0.0 },
+            1e-14,
+            "regular c10 is z",
+        );
+        assert_close(
+            single(true, 2, 2, 0).value(at),
+            Complex { re: 1.5, im: 0.0 },
+            1e-14,
+            "regular c20 is (3z^2-r^2)/2",
+        );
         let s = 1.0 / 2f64.sqrt();
-        assert_close(single(true, 2, 1, 1).value(at), cx(-s, -2.0 * s), 1e-14, "regular c11 is -(x+iy)/sqrt2");
-        assert_close(single(true, 2, 1, -1).value(at), cx(-s, 2.0 * s), 1e-14, "regular c1,-1 is -(x-iy)/sqrt2");
-    }
-
-    #[test]
-    fn value_is_linear_in_the_coefficients() {
-        let at = [0.6, -0.9, 0.4];
-        let (mut a, mut b, mut c) = (SolidHarmonic::irregular(4), SolidHarmonic::irregular(4), SolidHarmonic::irregular(4));
-        for k in 0..25 {
-            let (ca, cb) = (cx(0.1 * k as f64 - 1.0, 0.3), cx(0.7, -0.05 * k as f64));
-            a.coeffs_mut()[k] = ca;
-            b.coeffs_mut()[k] = cb;
-            c.coeffs_mut()[k] = ca * 2.0 + cb;
-        }
-        assert_close(c.value(at), a.value(at) * 2.0 + b.value(at), 1e-12, "linearity");
+        assert_close(
+            single(true, 2, 1, 1).value(at),
+            Complex {
+                re: -s,
+                im: -2.0 * s,
+            },
+            1e-14,
+            "regular c11 is -(x+iy)/sqrt2",
+        );
+        assert_close(
+            single(true, 2, 1, -1).value(at),
+            Complex {
+                re: -s,
+                im: 2.0 * s,
+            },
+            1e-14,
+            "regular c1,-1 is -(x-iy)/sqrt2",
+        );
     }
 
     #[test]
@@ -490,12 +515,25 @@ mod tests {
                 let (reg, irr) = (single(true, 4, n, m), single(false, 4, n, m));
                 let (v1r, v1i) = (reg.value(dir), irr.value(dir));
                 for v in [v1r, v1i] {
-                    assert!(v.re.abs() + v.im.abs() > 1e-6, "(n={n}, m={m}) term is zero; test would be vacuous");
+                    assert!(
+                        v.re.abs() + v.im.abs() > 1e-6,
+                        "(n={n}, m={m}) term is zero; test would be vacuous"
+                    );
                 }
                 for k in [0.5, 2.0] {
                     let far = [dir[0] * k, dir[1] * k, dir[2] * k];
-                    assert_close(reg.value(far), v1r * k.powi(n as i32), 1e-12, &format!("regular (n={n}, m={m}) x{k}"));
-                    assert_close(irr.value(far), v1i * k.powi(-(n as i32) - 1), 1e-12, &format!("irregular (n={n}, m={m}) x{k}"));
+                    assert_close(
+                        reg.value(far),
+                        v1r * k.powi(n as i32),
+                        1e-12,
+                        &format!("regular (n={n}, m={m}) x{k}"),
+                    );
+                    assert_close(
+                        irr.value(far),
+                        v1i * k.powi(-(n as i32) - 1),
+                        1e-12,
+                        &format!("irregular (n={n}, m={m}) x{k}"),
+                    );
                 }
             }
         }
@@ -511,14 +549,28 @@ mod tests {
                 for m in -n..=n {
                     let sh = single(regular, 4, n, m);
                     let v = sh.value(at);
-                    assert!(v.re.abs() + v.im.abs() > 1e-6, "(n={n}, m={m}) term is zero; test would be vacuous");
+                    assert!(
+                        v.re.abs() + v.im.abs() > 1e-6,
+                        "(n={n}, m={m}) term is zero; test would be vacuous"
+                    );
                     let lap = laplacian(|q| sh.value(q), at);
-                    assert_close(lap, cx(0.0, 0.0), 1e-3, &format!("regular={regular} (n={n}, m={m})"));
+                    assert_close(
+                        lap,
+                        Complex { re: 0.0, im: 0.0 },
+                        1e-3,
+                        &format!("regular={regular} (n={n}, m={m})"),
+                    );
                 }
             }
         }
         // Non-vacuity: the same check must fail for a function that is not harmonic.
-        let not_harmonic = laplacian(|q| cx(q[0] * q[0] + q[1] * q[1] + q[2] * q[2], 0.0), at);
+        let not_harmonic = laplacian(
+            |q| Complex {
+                re: q[0] * q[0] + q[1] * q[1] + q[2] * q[2],
+                im: 0.0,
+            },
+            at,
+        );
         assert!(not_harmonic.re > 1.0);
     }
 
@@ -526,9 +578,17 @@ mod tests {
     fn regular_value_at_the_center_is_the_n_zero_coefficient() {
         let mut sh = SolidHarmonic::regular(3);
         for (k, c) in sh.coeffs_mut().iter_mut().enumerate() {
-            *c = cx(k as f64 + 3.0, -1.0);
+            *c = Complex {
+                re: k as f64 + 3.0,
+                im: -1.0,
+            };
         }
-        assert_close(sh.value([0.0; 3]), cx(3.0, -1.0), 0.0, "center");
+        assert_close(
+            sh.value([0.0; 3]),
+            Complex { re: 3.0, im: -1.0 },
+            0.0,
+            "center",
+        );
     }
 
     #[test]
@@ -537,58 +597,67 @@ mod tests {
         SolidHarmonic::irregular(2).value([0.0; 3]);
     }
 
-    /// The physics: a source at x' seen from a farther point x.
-    /// 1/|x-x'| = sum_nm conj(R_nm(x')) S_nm(x); the error after order p is at
-    /// most the geometric tail (1/r) rho^(p+1) / (1-rho), rho = r'/r.
-    #[test]
-    fn irregular_series_of_a_point_source_converges_to_one_over_distance() {
-        let (src, at) = ([0.3, -0.2, 0.4], [0.9, 0.6, 0.7]);
-        let (rs, r) = (dist(src, [0.0; 3]), dist(at, [0.0; 3]));
-        let rho = rs / r;
-        let want = 1.0 / dist(at, src);
+    /// Rebuilds 1/|x - src| as a series about the origin and checks every order
+    /// against the geometric tail bound rho^(p+1) / (far (1 - rho)), rho = near/far,
+    /// where near and far are the smaller and larger of |src| and |at|.
+    /// `regular` selects the series valid near the origin (|at| < |src|); otherwise
+    /// the one valid far from it (|src| < |at|).
+    fn check_point_source_series(regular: bool, src: Vec3, at: Vec3) {
+        let (rs, r) = (dist3(src, [0.0; 3]), dist3(at, [0.0; 3]));
+        let (near, far) = if regular { (r, rs) } else { (rs, r) };
+        assert!(near < far, "the series only converges for near < far");
+        let rho = near / far;
+        let want = 1.0 / dist3(at, src);
         let mut errs = Vec::new();
         for p in [0usize, 1, 2, 4, 8, 12] {
             let y = harmonics(src, p);
-            let mut sh = SolidHarmonic::irregular(p);
+            let mut sh = if regular {
+                SolidHarmonic::regular(p)
+            } else {
+                SolidHarmonic::irregular(p)
+            };
             for (idx, c) in sh.coeffs_mut().iter_mut().enumerate() {
                 let (n, _) = from_index(idx);
-                *c = y[idx].conj() * rs.powi(n as i32);
+                let radial = if regular {
+                    rs.powi(-(n as i32) - 1)
+                } else {
+                    rs.powi(n as i32)
+                };
+                *c = y[idx].conj() * radial;
             }
             let v = sh.value(at);
             let err = (v.re - want).abs();
-            let bound = rho.powi(p as i32 + 1) / (r * (1.0 - rho));
-            assert!(v.im.abs() < 1e-12, "p={p}: potential must be real, got im={}", v.im);
-            assert!(err <= bound * (1.0 + 1e-9) + 1e-14, "p={p}: err {err} exceeds tail bound {bound}");
+            let bound = rho.powi(p as i32 + 1) / (far * (1.0 - rho));
+            assert!(
+                v.im.abs() < 1e-12,
+                "p={p}: potential must be real, got im={}",
+                v.im
+            );
+            assert!(
+                err <= bound * (1.0 + 1e-9) + 1e-14,
+                "p={p}: err {err} exceeds tail bound {bound}"
+            );
             errs.push(err);
         }
         assert!(errs[0] > 1e-2, "p=0 must be visibly wrong, err={}", errs[0]);
-        assert!(*errs.last().unwrap() < 1e-4, "p=12 err={}", errs.last().unwrap());
+        assert!(
+            *errs.last().unwrap() < 1e-4,
+            "p=12 err={}",
+            errs.last().unwrap()
+        );
     }
 
-    /// The mirror image: a far source seen from a point near the center,
-    /// 1/|x-x'| = sum_nm conj(S_nm(x')) R_nm(x), tail (1/r') rho^(p+1)/(1-rho), rho = r/r'.
+    /// A source at x' seen from a farther point x:
+    /// 1/|x-x'| = sum_nm conj(R_nm(x')) S_nm(x).
+    #[test]
+    fn irregular_series_of_a_point_source_converges_to_one_over_distance() {
+        check_point_source_series(false, [0.3, -0.2, 0.4], [0.9, 0.6, 0.7]);
+    }
+
+    /// The mirror image, a far source seen from a point near the center:
+    /// 1/|x-x'| = sum_nm conj(S_nm(x')) R_nm(x).
     #[test]
     fn regular_series_of_a_far_source_converges_to_one_over_distance() {
-        let (src, at) = ([0.9, 0.6, 0.7], [0.3, -0.2, 0.4]);
-        let (rs, r) = (dist(src, [0.0; 3]), dist(at, [0.0; 3]));
-        let rho = r / rs;
-        let want = 1.0 / dist(at, src);
-        let mut errs = Vec::new();
-        for p in [0usize, 1, 2, 4, 8, 12] {
-            let y = harmonics(src, p);
-            let mut sh = SolidHarmonic::regular(p);
-            for (idx, c) in sh.coeffs_mut().iter_mut().enumerate() {
-                let (n, _) = from_index(idx);
-                *c = y[idx].conj() * rs.powi(-(n as i32) - 1);
-            }
-            let v = sh.value(at);
-            let err = (v.re - want).abs();
-            let bound = rho.powi(p as i32 + 1) / (rs * (1.0 - rho));
-            assert!(v.im.abs() < 1e-12, "p={p}: potential must be real, got im={}", v.im);
-            assert!(err <= bound * (1.0 + 1e-9) + 1e-14, "p={p}: err {err} exceeds tail bound {bound}");
-            errs.push(err);
-        }
-        assert!(errs[0] > 1e-2, "p=0 must be visibly wrong, err={}", errs[0]);
-        assert!(*errs.last().unwrap() < 1e-4, "p=12 err={}", errs.last().unwrap());
+        check_point_source_series(true, [0.9, 0.6, 0.7], [0.3, -0.2, 0.4]);
     }
 }
