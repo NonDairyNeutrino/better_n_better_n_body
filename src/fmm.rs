@@ -1,5 +1,6 @@
 mod complex;
 mod harmonic;
+mod operators;
 mod tree;
 use crate::shared::{Body, System, Vec3};
 use tree::FmmTree;
