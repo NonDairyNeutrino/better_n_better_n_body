@@ -55,6 +55,7 @@ impl<'a> FmmTree<'a> {
                 self.mass_distribution.order(),
             );
         } else {
+            self.mass_distribution = SolidHarmonic::irregular(self.mass_distribution.order());
             for child in &mut self.children {
                 child.accumulate_mass_distribution();
                 let shift: Vec3 = from_fn(|i| child.system.center[i] - self.system.center[i]);

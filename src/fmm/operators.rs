@@ -35,7 +35,7 @@ pub fn particle_to_multipole<'b>(
 
 /// Create a multipole centered at a point from the multipole centered at another point
 pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
-    if let SolidHarmonic::Regular(v) = mp {
+    if let SolidHarmonic::Regular(_) = mp {
         panic!("M2M not defined for Regular harmonics")
     }
     let mut mp_shifted: SolidHarmonic = SolidHarmonic::irregular(mp.order());
