@@ -413,9 +413,7 @@ mod tests {
                 }
             }
             assert!((sum_of_leaves - total).abs() <= 1e-9 * total, "{name}");
-            if name != "n=2" {
-                assert!(crowded > 0, "{name}: no leaf holds several bodies");
-            }
+            assert!(crowded > 0, "{name}: no leaf holds several bodies");
         }
     }
 
@@ -453,12 +451,10 @@ mod tests {
                     checked += 1;
                 }
             }
-            if name != "n=2" {
-                assert!(
-                    checked > 0,
-                    "{name}: no leaf with several bodies was checked"
-                );
-            }
+            assert!(
+                checked > 0,
+                "{name}: no leaf with several bodies was checked"
+            );
         }
     }
 
@@ -495,6 +491,83 @@ mod tests {
                 "slot {k} is not finite"
             );
             assert_eq!((c.re, c.im), (want, 0.0), "slot {k}");
+        }
+    }
+
+    // ------------------------------------------- accumulating up the whole tree
+
+    /// The bodies in every leaf beneath `node`.
+    fn bodies_beneath<'t>(node: &'t FmmTree) -> Vec<&'t Body> {
+        leaves(node)
+            .iter()
+            .flat_map(|leaf| leaf.system.bodies.iter().copied())
+            .collect()
+    }
+
+    /// Slot 0 is the total mass and shifting never changes it, so after the whole
+    /// upward pass every node, at every level, must hold the mass of exactly the
+    /// bodies beneath it. A forgotten or doubled child shows up here.
+    #[test]
+    fn every_node_holds_the_mass_of_all_the_bodies_beneath_it() {
+        for (name, bodies) in fixtures() {
+            let mut tree = tree_of(&bodies, 3);
+            tree.accumulate_mass_distribution();
+            let mut deepest_internal = 0;
+            for node in all_nodes(&tree) {
+                let beneath: f64 = bodies_beneath(node).iter().map(|b| b.mass).sum();
+                let c00 = node.mass_distribution.get(0, 0);
+                assert!(
+                    (c00.re - beneath).abs() <= 1e-12 * beneath.max(1.0) && c00.im == 0.0,
+                    "{name}: node over {} bodies holds mass {c00:?}, expected {beneath}",
+                    bodies_beneath(node).len()
+                );
+                if !node.is_leaf() {
+                    deepest_internal = deepest_internal.max(depth(node));
+                }
+            }
+            if bodies.len() >= 300 {
+                assert!(
+                    deepest_internal >= 2,
+                    "{name}: tree too shallow to test several levels"
+                );
+            }
+        }
+    }
+
+    /// Each node's summary, read well outside that node's own cell, must give the
+    /// potential of all the bodies beneath it. Internal nodes got theirs only
+    /// through the shifts, so this fails if a shift has the wrong sign or size.
+    #[test]
+    fn every_node_summary_reproduces_the_potential_of_the_bodies_beneath_it() {
+        let dir = [0.3, -0.5, 0.8];
+        let norm = (0.3f64.powi(2) + 0.5f64.powi(2) + 0.8f64.powi(2)).sqrt();
+        for (name, bodies) in fixtures() {
+            let mut tree = tree_of(&bodies, 8);
+            tree.accumulate_mass_distribution();
+            let mut internal_checked = 0;
+            for node in all_nodes(&tree) {
+                let beneath = bodies_beneath(node);
+                if beneath.is_empty() {
+                    continue;
+                }
+                let (center, hw) = (node.system.center, node.system.hw);
+                // eight half-widths out: every body is within sqrt(3) hw of the center
+                let rel: Vec3 = from_fn(|i| 8.0 * hw * dir[i] / norm);
+                let x: Vec3 = from_fn(|i| center[i] + rel[i]);
+                let direct: f64 = beneath.iter().map(|b| b.mass / b.distance(&x)).sum();
+                let got = node.mass_distribution.value(rel);
+                assert!(
+                    (got.re - direct).abs() <= 1e-4 * direct && got.im.abs() <= 1e-4 * direct,
+                    "{name}: node over {} bodies gives {got:?}, direct sum is {direct}",
+                    beneath.len()
+                );
+                if !node.is_leaf() {
+                    internal_checked += 1;
+                }
+            }
+            if bodies.len() > MAX_LEAF_BODIES {
+                assert!(internal_checked > 0, "{name}: no internal node was checked");
+            }
         }
     }
 }
