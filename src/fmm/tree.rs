@@ -1,6 +1,8 @@
+use std::array::from_fn;
+
 use crate::fmm::harmonic::SolidHarmonic;
-use crate::fmm::operators::particle_to_multipole;
-use crate::shared::System;
+use crate::fmm::operators::{multipole_to_multipole, particle_to_multipole};
+use crate::shared::{System, Vec3};
 
 const MAX_LEAF_BODIES: usize = 2;
 pub struct FmmTree<'a> {
@@ -55,7 +57,8 @@ impl<'a> FmmTree<'a> {
         } else {
             for child in &mut self.children {
                 child.accumulate_mass_distribution();
-                self.mass_distribution += todo!()
+                let shift: Vec3 = from_fn(|i| child.system.center[i] - self.system.center[i]);
+                self.mass_distribution += &multipole_to_multipole(&child.mass_distribution, shift);
             }
         }
     }

@@ -3,7 +3,7 @@ use std::array::from_fn;
 use crate::{
     fmm::{
         complex::Complex,
-        harmonic::{SolidHarmonic, from_index, harmonics},
+        harmonic::{SolidHarmonic, from_index, harmonics, to_index},
     },
     shared::{Body, Vec3},
 };
@@ -31,6 +31,77 @@ pub fn particle_to_multipole<'b>(
         }
     }
     return mp;
+}
+
+/// Create a multipole centered at a point from the multipole centered at another point
+pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
+    let mut mp_shifted: SolidHarmonic = SolidHarmonic::irregular(mp.order());
+    let shift_size: f64 = shift.map(|dim| dim.powi(2)).iter().sum::<f64>().sqrt();
+
+    // handle zero shift case
+    let harmonics_shifted: Vec<Complex> = if shift_size == 0.0 {
+        let mut h: Vec<Complex> = harmonics(shift, mp.order());
+        for m in h.iter_mut() {
+            *m = Complex { re: 0.0, im: 0.0 }
+        }
+        h[0] = Complex { re: 1.0, im: 0.0 };
+        h
+    } else {
+        harmonics(shift, mp.order())
+            .iter()
+            .enumerate()
+            .map(|(i, h)| *h * shift_size.powi(from_index(i).0 as i32))
+            .collect()
+    };
+
+    for n in 0..=mp_shifted.order() {
+        let ni: i64 = n as i64;
+        for m in -ni..=ni {
+            let idx: usize = to_index(ni, m);
+            let slot: &mut Complex = &mut mp_shifted.coeffs_mut()[idx];
+
+            for lambda in 0..=ni {
+                for mu in -(lambda as i64)..=(lambda as i64) {
+                    if ni - lambda < (m - mu).abs() {
+                        continue;
+                    } else {
+                        let ep: f64 = epsilon(m, mu);
+                        let bin: f64 =
+                            (binomial(ni + m, lambda + mu) * binomial(ni - m, lambda - mu)).sqrt();
+                        let h: Complex = harmonics_shifted[to_index(lambda, mu)].conj()
+                            * mp.get(ni - lambda, m - mu);
+                        *slot += h * ep * bin;
+                    }
+                }
+            }
+        }
+    }
+    return mp_shifted;
+}
+
+// small helper because the hermonics aren't using standard convention for negative m
+fn sigma(k: i64) -> f64 {
+    if k < 0 && k.rem_euclid(2) == 1 {
+        -1.0
+    } else {
+        1.0
+    }
+}
+
+fn epsilon(m: i64, mu: i64) -> f64 {
+    sigma(m) * sigma(mu) * sigma(m - mu)
+}
+
+fn binomial(n: i64, k: i64) -> f64 {
+    if k < 0 || n < k {
+        return 0.0;
+    } else {
+        let mut bin: f64 = 1.0;
+        for i in 0..=(k - 1) {
+            bin *= ((n - i) as f64) / ((i + 1) as f64);
+        }
+        return bin;
+    }
 }
 
 #[cfg(test)]
