@@ -274,4 +274,34 @@ mod tests {
             );
         }
     }
+
+    /// The center body adds its mass to slot 0 and nothing above; it must not
+    /// erase what the other bodies contributed. Hand values: c00 = 1 + 2 + 4 and
+    /// c10 = sum of m z = 1 * 0.4 + 4 * (-0.6) (the center body has z = 0).
+    #[test]
+    fn a_body_at_the_center_among_others_keeps_their_contributions() {
+        let center = [0.0; 3];
+        let bodies = [
+            body_with(1.0, 0.5, 0.2, 0.4),
+            body_with(2.0, 0.0, 0.0, 0.0),
+            body_with(4.0, -0.1, 0.3, -0.6),
+        ];
+        let mp = particle_to_multipole(&bodies, center, 2);
+        assert_close(mp.get(0, 0), Complex { re: 7.0, im: 0.0 }, 1e-12, "c00");
+        assert_close(mp.get(1, 0), Complex { re: -2.0, im: 0.0 }, 1e-12, "c10");
+        let swapped = [bodies[1], bodies[0], bodies[2]];
+        let mp2 = particle_to_multipole(&swapped, center, 2);
+        assert_close(
+            mp2.get(0, 0),
+            Complex { re: 7.0, im: 0.0 },
+            1e-12,
+            "c00, center body first",
+        );
+        assert_close(
+            mp2.get(1, 0),
+            Complex { re: -2.0, im: 0.0 },
+            1e-12,
+            "c10, center body first",
+        );
+    }
 }

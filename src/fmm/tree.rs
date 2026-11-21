@@ -345,11 +345,12 @@ mod tests {
     /// What a `SolidHarmonic` is lives in `harmonic.rs`. The tree's job is to give
     /// every node a fresh, empty one of the right order and kind, so compare with
     /// a freshly built one: that pins the kind, the length and the zeros at once.
-    /// far_field (valid far from the cell, made by its own mass) is irregular;
-    /// local_field (valid near the cell, made by far mass) is regular. This checks
-    /// the code against that convention, not the convention against the physics.
+    /// mass_distribution (the cell's own mass, valid outside the cell) is irregular;
+    /// external_potential (the potential from well-separated cells, valid inside the
+    /// cell) is regular. This checks the code against that convention, not the
+    /// convention against the physics.
     #[test]
-    fn every_node_starts_with_an_empty_irregular_far_field_of_order_p() {
+    fn every_node_starts_with_an_empty_irregular_mass_distribution_of_order_p() {
         for p in [0, 1, 3] {
             let bodies = random_bodies(9, 60);
             let tree = tree_of(&bodies, p);
@@ -360,13 +361,137 @@ mod tests {
     }
 
     #[test]
-    fn every_node_starts_with_an_empty_regular_local_field_of_order_p() {
+    fn every_node_starts_with_an_empty_regular_external_potential_of_order_p() {
         for p in [0, 1, 3] {
             let bodies = random_bodies(9, 60);
             let tree = tree_of(&bodies, p);
             for node in all_nodes(&tree) {
                 assert_eq!(node.external_potential, SolidHarmonic::regular(p), "p={p}");
             }
+        }
+    }
+
+    // -------------------------------------------- accumulating the leaf summaries
+
+    /// Every leaf, mutably, so the accumulation can be run on each one by itself.
+    fn leaves_mut<'t, 'a>(tree: &'t mut FmmTree<'a>) -> Vec<&'t mut FmmTree<'a>> {
+        if tree.children.is_empty() {
+            vec![tree]
+        } else {
+            tree.children
+                .iter_mut()
+                .flat_map(|child| leaves_mut(child))
+                .collect()
+        }
+    }
+
+    /// Slot 0 of a summary is the total mass, so each leaf must hold exactly the
+    /// mass of its own bodies and the leaves together must hold all of it. The
+    /// expected values come from summing masses, not from the operator.
+    #[test]
+    fn each_leaf_accumulates_the_mass_of_its_own_bodies() {
+        for (name, bodies) in fixtures() {
+            let total: f64 = bodies.iter().map(|b| b.mass).sum();
+            let mut tree = tree_of(&bodies, 3);
+            let mut sum_of_leaves = 0.0;
+            let mut crowded = 0;
+            for leaf in leaves_mut(&mut tree) {
+                leaf.accumulate_mass_distribution();
+                let own: f64 = leaf.system.bodies.iter().map(|b| b.mass).sum();
+                let c00 = leaf.mass_distribution.get(0, 0);
+                assert!(
+                    (c00.re - own).abs() <= 1e-12 * own.max(1.0) && c00.im == 0.0,
+                    "{name}: leaf holds {} bodies of total mass {own}, summary says {c00:?}",
+                    leaf.system.bodies.len()
+                );
+                sum_of_leaves += c00.re;
+                if leaf.system.bodies.len() >= 2 {
+                    crowded += 1;
+                }
+            }
+            assert!((sum_of_leaves - total).abs() <= 1e-9 * total, "{name}");
+            if name != "n=2" {
+                assert!(crowded > 0, "{name}: no leaf holds several bodies");
+            }
+        }
+    }
+
+    /// The summary of a leaf, evaluated well outside the leaf's own cell, must
+    /// reproduce the direct potential of that leaf's bodies. This is what fails if
+    /// the wrong center, bodies or order are passed to the operator.
+    #[test]
+    fn a_leaf_summary_reproduces_the_potential_of_its_bodies_outside_its_cell() {
+        let dir = [0.3, -0.5, 0.8];
+        let norm = (0.3f64.powi(2) + 0.5f64.powi(2) + 0.8f64.powi(2)).sqrt();
+        for (name, bodies) in fixtures() {
+            let mut tree = tree_of(&bodies, 6);
+            let mut checked = 0;
+            for leaf in leaves_mut(&mut tree) {
+                leaf.accumulate_mass_distribution();
+                if leaf.system.bodies.is_empty() {
+                    continue;
+                }
+                let (center, hw) = (leaf.system.center, leaf.system.hw);
+                // six half-widths away: the farthest body is at most sqrt(3) hw out
+                let rel: Vec3 = std::array::from_fn(|i| 6.0 * hw * dir[i] / norm);
+                let x: Vec3 = std::array::from_fn(|i| center[i] + rel[i]);
+                let direct: f64 = leaf
+                    .system
+                    .bodies
+                    .iter()
+                    .map(|b| b.mass / b.distance(&x))
+                    .sum();
+                let got = leaf.mass_distribution.value(rel);
+                assert!(
+                    (got.re - direct).abs() <= 1e-3 * direct && got.im.abs() <= 1e-3 * direct,
+                    "{name}: summary gives {got:?}, direct sum is {direct}"
+                );
+                if leaf.system.bodies.len() >= 2 {
+                    checked += 1;
+                }
+            }
+            if name != "n=2" {
+                assert!(
+                    checked > 0,
+                    "{name}: no leaf with several bodies was checked"
+                );
+            }
+        }
+    }
+
+    /// Accumulating must fill only the mass distribution: the external potential
+    /// stays empty, the kinds stay as constructed and the order is unchanged.
+    #[test]
+    fn accumulating_touches_only_the_mass_distribution_and_keeps_its_kind_and_order() {
+        let p = 3;
+        let bodies = random_bodies(5, 40);
+        let mut tree = tree_of(&bodies, p);
+        for leaf in leaves_mut(&mut tree) {
+            leaf.accumulate_mass_distribution();
+            assert!(matches!(
+                leaf.mass_distribution,
+                SolidHarmonic::Irregular(_)
+            ));
+            assert_eq!(leaf.mass_distribution.order(), p);
+            assert_eq!(leaf.external_potential, SolidHarmonic::regular(p));
+        }
+    }
+
+    /// A single body gets a cell of half-width 0 centered on itself, so it sits
+    /// exactly at its own center, the case with no direction.
+    #[test]
+    fn a_single_body_root_accumulates_a_finite_summary_holding_its_mass() {
+        let bodies = vec![body_with(2.5, 0.3, -0.2, 0.5)];
+        let mut tree = tree_of(&bodies, 3);
+        assert!(tree.is_leaf());
+        tree.accumulate_mass_distribution();
+        for (k, c) in tree.mass_distribution.coeffs().iter().enumerate() {
+            let want = if k == 0 { 2.5 } else { 0.0 };
+            assert!(
+                c.re.is_finite() && c.im.is_finite(),
+                "slot {k} is not finite"
+            );
+            assert_eq!((c.re, c.im), (want, 0.0), "slot {k}");
         }
     }
 }

@@ -75,7 +75,7 @@ impl AddAssign<&SolidHarmonic> for SolidHarmonic {
     fn add_assign(&mut self, rhs: &SolidHarmonic) {
         assert!(
             std::mem::discriminant(self) == std::mem::discriminant(rhs),
-            "connot add a regular and an irregular solid harmonic"
+            "cannot add a regular and an irregular solid harmonic"
         );
         assert_eq!(
             self.order(),
@@ -677,5 +677,87 @@ mod tests {
     #[test]
     fn regular_series_of_a_far_source_converges_to_one_over_distance() {
         check_point_source_series(true, [0.9, 0.6, 0.7], [0.3, -0.2, 0.4]);
+    }
+
+    // ---- AddAssign
+
+    /// A solid harmonic of the given kind and order whose slot k holds `f(k)`.
+    fn filled(regular: bool, p: usize, f: impl Fn(usize) -> Complex) -> SolidHarmonic {
+        let mut sh = if regular {
+            SolidHarmonic::regular(p)
+        } else {
+            SolidHarmonic::irregular(p)
+        };
+        for (k, c) in sh.coeffs_mut().iter_mut().enumerate() {
+            *c = f(k);
+        }
+        sh
+    }
+
+    #[test]
+    fn adding_solid_harmonics_adds_slot_by_slot_and_keeps_the_kind() {
+        for regular in [true, false] {
+            let mut a = filled(regular, 3, |k| Complex {
+                re: k as f64,
+                im: -(k as f64),
+            });
+            let b = filled(regular, 3, |k| Complex {
+                re: 2.0 * k as f64 + 1.0,
+                im: 3.0,
+            });
+            a += &b;
+            for k in 0..16 {
+                assert_close(
+                    a.coeffs()[k],
+                    Complex {
+                        re: 3.0 * k as f64 + 1.0,
+                        im: 3.0 - k as f64,
+                    },
+                    0.0,
+                    &format!("regular={regular}, slot {k}"),
+                );
+            }
+            assert_eq!(matches!(a, SolidHarmonic::Regular(_)), regular);
+        }
+    }
+
+    #[test]
+    fn adding_an_empty_solid_harmonic_changes_nothing() {
+        let mut a = filled(false, 2, |k| Complex {
+            re: k as f64 + 1.0,
+            im: 0.5,
+        });
+        let before = a.clone();
+        assert_ne!(before, SolidHarmonic::irregular(2), "need a nonzero start");
+        a += &SolidHarmonic::irregular(2);
+        assert_eq!(a, before);
+    }
+
+    #[test]
+    #[should_panic(expected = "regular and an irregular")]
+    fn adding_an_irregular_to_a_regular_panics() {
+        let mut a = SolidHarmonic::regular(2);
+        a += &SolidHarmonic::irregular(2);
+    }
+
+    #[test]
+    #[should_panic(expected = "regular and an irregular")]
+    fn adding_a_regular_to_an_irregular_panics() {
+        let mut a = SolidHarmonic::irregular(2);
+        a += &SolidHarmonic::regular(2);
+    }
+
+    #[test]
+    #[should_panic(expected = "different order")]
+    fn adding_solid_harmonics_of_different_order_panics() {
+        let mut a = SolidHarmonic::irregular(2);
+        a += &SolidHarmonic::irregular(3);
+    }
+
+    #[test]
+    #[should_panic(expected = "different order")]
+    fn adding_a_lower_order_to_a_higher_order_panics_too() {
+        let mut a = SolidHarmonic::regular(3);
+        a += &SolidHarmonic::regular(2);
     }
 }
