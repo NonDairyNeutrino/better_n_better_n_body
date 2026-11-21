@@ -1,3 +1,5 @@
+use std::ops::AddAssign;
+
 use crate::{fmm::complex::Complex, shared::Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +69,22 @@ impl SolidHarmonic {
             val += *c * y * scale;
         }
         return val;
+    }
+}
+impl AddAssign<&SolidHarmonic> for SolidHarmonic {
+    fn add_assign(&mut self, rhs: &SolidHarmonic) {
+        assert!(
+            std::mem::discriminant(self) == std::mem::discriminant(rhs),
+            "connot add a regular and an irregular solid harmonic"
+        );
+        assert_eq!(
+            self.order(),
+            rhs.order(),
+            "cannot add solid harmonics of different order"
+        );
+        for (a, b) in self.coeffs_mut().iter_mut().zip(rhs.coeffs()) {
+            *a += *b;
+        }
     }
 }
 
