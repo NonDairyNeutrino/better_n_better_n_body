@@ -1,4 +1,5 @@
 use crate::fmm::harmonic::SolidHarmonic;
+use crate::fmm::operators::particle_to_multipole;
 use crate::shared::System;
 
 const MAX_LEAF_BODIES: usize = 2;
@@ -41,8 +42,22 @@ impl<'a> FmmTree<'a> {
             };
         }
     }
-    pub fn accumulate_mass_distribution() -> SolidHarmonic {
-        todo!()
+    pub fn is_leaf(&self) -> bool {
+        self.children.is_empty()
+    }
+    pub fn accumulate_mass_distribution(&mut self) {
+        if self.is_leaf() {
+            self.mass_distribution = particle_to_multipole(
+                self.system.bodies.iter().copied(),
+                self.system.center,
+                self.mass_distribution.order(),
+            );
+        } else {
+            for child in &mut self.children {
+                child.accumulate_mass_distribution();
+                self.mass_distribution += todo!()
+            }
+        }
     }
 }
 
