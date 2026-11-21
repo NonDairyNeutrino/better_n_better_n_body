@@ -8,7 +8,11 @@ use crate::{
     shared::{Body, Vec3},
 };
 
-fn particle_to_multipole(bodies: &[Body], center: Vec3, p: usize) -> SolidHarmonic {
+pub fn particle_to_multipole<'b>(
+    bodies: impl IntoIterator<Item = &'b Body>,
+    center: Vec3,
+    p: usize,
+) -> SolidHarmonic {
     let mut mp: SolidHarmonic = SolidHarmonic::irregular(p);
     let coeffs: &mut [Complex] = mp.coeffs_mut();
 
