@@ -378,4 +378,21 @@ mod tests {
             "c10, center body first",
         );
     }
+
+    // ------------------------------------------------------------ misuse
+
+    /// A shift is defined for multipole moments only; a local expansion has a
+    /// different translation rule, so a Regular input must be refused, whether
+    /// or not the shift is zero.
+    #[test]
+    #[should_panic(expected = "not defined for Regular")]
+    fn m2m_refuses_a_regular_input() {
+        multipole_to_multipole(&SolidHarmonic::regular(2), [0.1, -0.2, 0.3]);
+    }
+
+    #[test]
+    #[should_panic(expected = "not defined for Regular")]
+    fn m2m_refuses_a_regular_input_even_for_a_zero_shift() {
+        multipole_to_multipole(&SolidHarmonic::regular(2), [0.0; 3]);
+    }
 }

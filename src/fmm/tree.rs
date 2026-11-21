@@ -571,4 +571,32 @@ mod tests {
             }
         }
     }
+
+    /// Accumulating is a pure function of the bodies, so doing it again must
+    /// leave every node exactly as it was. Internal nodes sum their children into
+    /// whatever they already hold, so without a reset they would double.
+    #[test]
+    fn accumulating_twice_gives_the_same_result_as_accumulating_once() {
+        for (name, bodies) in fixtures() {
+            let mut tree = tree_of(&bodies, 4);
+            tree.accumulate_mass_distribution();
+            let once: Vec<SolidHarmonic> = all_nodes(&tree)
+                .iter()
+                .map(|n| n.mass_distribution.clone())
+                .collect();
+            tree.accumulate_mass_distribution();
+            let twice: Vec<SolidHarmonic> = all_nodes(&tree)
+                .iter()
+                .map(|n| n.mass_distribution.clone())
+                .collect();
+            assert_eq!(once, twice, "{name}");
+            if bodies.len() > MAX_LEAF_BODIES {
+                let internal_with_mass = all_nodes(&tree)
+                    .iter()
+                    .filter(|n| !n.is_leaf() && n.mass_distribution.get(0, 0).re > 0.0)
+                    .count();
+                assert!(internal_with_mass > 0, "{name}: nothing internal to test");
+            }
+        }
+    }
 }
