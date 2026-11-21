@@ -14,15 +14,15 @@ You want to know how loud the school is at your desk.
 | school | simulation |
 |---|---|
 | classroom / grade / school | tree cell at a given level |
-| teacher's note about the kids | the cell's *summary* (multipole expansion) |
-| "what it sounds like in this room" | the cell's *local field* (local expansion) |
+| teacher's note about the kids | the cell's *mass distribution* (multipole moments) |
+| "what it sounds like in this room" | the cell's *external potential* (local expansion) |
 | kid | body |
 | sitting right next to you | near field, summed directly |
 
 ## Why a short note is enough
 
-- **Summary (multipole):** seen from far away, a cell's mass distribution can be described by a few numbers (total mass, then dipole, quadrupole, ...). Barnes-Hut keeps only the first one, the mass at the center of mass.
-- **Local field:** seen from inside a cell, the pull of far-away mass varies smoothly. A few numbers (value, slope, curvature, ...) describe it, and every body in the cell reads its acceleration from the same few numbers.
+- **Mass distribution (multipole moments):** seen from far away, a cell's mass can be described by a few numbers (total mass, then dipole, quadrupole, ...). They describe what is *here*, packaged so that cells *there* can use it. Barnes-Hut keeps only the first number, the mass at the center of mass.
+- **External potential (local expansion):** the potential felt inside a cell that is caused by everything outside its *near zone*. The near zone is the cell and its touching neighbours, whose bodies are summed directly. Seen from inside the cell, the potential from farther away varies smoothly, so a few numbers (value, slope, curvature, ...) describe it. It describes what is *there*, packaged for use *here*, and every body in the cell reads its acceleration from the same few numbers.
 - Both are truncated at order `p`. This is the accuracy knob.
 
 The tool for both is the expansion of the kernel
@@ -31,17 +31,32 @@ The tool for both is the expansion of the kernel
 
 which separates the source position `r'` from the observation point `r`. The addition theorem rewrites `Pₙ` as products of spherical harmonics.
 
+## Names in the code
+
+Both are stored as a `SolidHarmonic`, a list of coefficients indexed by `(n, m)`.
+
+| `FmmTree` field | standard name | stored as | valid |
+|---|---|---|---|
+| `mass_distribution` | multipole expansion | `SolidHarmonic::Irregular` | outside the cell |
+| `external_potential` | local expansion | `SolidHarmonic::Regular` | inside the cell |
+
+The potential at a body is split exactly, like an internal and an external potential of a subsystem:
+
+    potential = external potential (series, truncated at p) + nearby bodies (summed directly)
+
+The only approximation is the truncation of the external part. Nothing is averaged or neglected.
+
 ## The steps
 
 Standard names are in brackets.
 
 | step | what it does | school |
 |---|---|---|
-| summarize a leaf (P2M) | bodies in a leaf → its summary | a teacher asks each kid and writes one note |
-| summarize upward (M2M) | children's summaries → parent's summary | a grade head combines class notes; nobody re-asks the kids |
-| far note → local field (M2L) | a well-separated cell's summary → local field at a target cell | your teacher works out what that class sounds like *here* and adds it to the room's note |
-| push field down (L2L) | parent's local field → children's local fields | the principal's note is handed down to grades, then to rooms |
-| read off acceleration (L2P) | leaf's local field → acceleration at each body | a kid works out what the room's note means at their own desk |
+| summarize a leaf (P2M) | bodies in a leaf → its mass distribution | a teacher asks each kid and writes one note |
+| summarize upward (M2M) | children's mass distributions → parent's | a grade head combines class notes; nobody re-asks the kids |
+| far note → external potential (M2L) | a well-separated cell's mass distribution → external potential at a target cell | your teacher works out what that class sounds like *here* and adds it to the room's note |
+| push potential down (L2L) | parent's external potential → children's external potentials | the principal's note is handed down to grades, then to rooms |
+| read off acceleration (L2P) | leaf's external potential → acceleration at each body | a kid works out what the room's note means at their own desk |
 | nearby directly (P2P) | body-to-body sum with close leaves | a kid listens to the neighbours themselves |
 
 The only approximation is truncating the series at order `p`. Everything else is exact bookkeeping.
@@ -49,23 +64,23 @@ The only approximation is truncating the series at order `p`. Everything else is
 ## Order of work
 
 1. **Build the tree.**
-2. **Upward pass:** summarize each leaf (P2M), then summarize upward to the root (M2M). All summaries must be finished before the next stage.
-3. **Traversal:** walk pairs of cells. If two cells are well separated, turn the source's summary into a local field at the target (M2L). If they are close and both are leaves, sum bodies directly (P2P). Otherwise split the larger cell and recurse.
-4. **Downward pass:** push local fields down to the leaves (L2L), then read off an acceleration for each body (L2P).
+2. **Accumulate the mass distributions (the upward pass):** summarize each leaf (P2M), then summarize upward to the root (M2M). All mass distributions must be finished before the next stage.
+3. **Traversal:** walk pairs of cells. If two cells are well separated, turn the source's mass distribution into external potential at the target (M2L). If they are close and both are leaves, sum bodies directly (P2P). Otherwise split the larger cell and recurse.
+4. **Downward pass:** push external potentials down to the leaves (L2L), then read off an acceleration for each body (L2P).
 5. **Apply** the accelerations (as in `direct` and Barnes-Hut).
 
 ## What a body's acceleration is made of
 
 For a body in leaf `B`:
 
-    a(x) = −∇φ_near(x) − ∇φ_far(x)
+    a(x) = −∇φ_near(x) − ∇φ_external(x)
 
 - `φ_near`: bodies in `B` and its touching neighbours, summed directly.
-- `φ_far`: evaluated from `B`'s local field. The local field of a cell `A` is
+- `φ_external`: evaluated from `B`'s external potential. The external potential of a cell `A` is
 
-      L(A) = Σ_{C ∈ W(A)} M2L(C) + L2L(L(parent of A))
+      Φ(A) = Σ_{C ∈ W(A)} M2L(mass distribution of C) + L2L(Φ(parent of A))
 
-  where `W(A)` is the set of cells well separated from `A` whose parents were *not* well separated from `A`'s parent. This avoids counting any source twice: everything far from the parent has already come down from above.
+  where `W(A)` is the set of cells well separated from `A` whose parents were *not* well separated from `A`'s parent. This avoids counting any source twice: everything far from the parent has already come down from above. The near zone grows with the size of the cell, so each level adds only the contributions that *became* external at that level.
 
 ## Why it's O(N)
 

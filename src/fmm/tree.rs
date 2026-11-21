@@ -4,14 +4,14 @@ use crate::shared::System;
 const MAX_LEAF_BODIES: usize = 2;
 pub struct FmmTree<'a> {
     system: System<'a>,
-    far_field: SolidHarmonic,   // the field far from the observer
-    local_field: SolidHarmonic, // the field near the observer
+    mass_distribution: SolidHarmonic, // the mass distribution in the cell as moments
+    external_potential: SolidHarmonic, // the potential field felt in the cell
     children: Vec<FmmTree<'a>>,
 }
 impl<'a> FmmTree<'a> {
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
-        let far_field: SolidHarmonic = SolidHarmonic::irregular(p);
-        let local_field: SolidHarmonic = SolidHarmonic::regular(p);
+        let mass_distribution: SolidHarmonic = SolidHarmonic::irregular(p);
+        let external_potential: SolidHarmonic = SolidHarmonic::regular(p);
 
         if MAX_LEAF_BODIES < system.bodies.len() {
             // split
@@ -26,8 +26,8 @@ impl<'a> FmmTree<'a> {
             return FmmTree {
                 system: new_system,
                 children,
-                far_field,
-                local_field,
+                mass_distribution,
+                external_potential,
             };
         } else {
             // don't split
@@ -36,10 +36,13 @@ impl<'a> FmmTree<'a> {
             return FmmTree {
                 system,
                 children,
-                far_field,
-                local_field,
+                mass_distribution,
+                external_potential,
             };
         }
+    }
+    pub fn accumulate_mass_distribution() -> SolidHarmonic {
+        todo!()
     }
 }
 
@@ -336,7 +339,7 @@ mod tests {
             let bodies = random_bodies(9, 60);
             let tree = tree_of(&bodies, p);
             for node in all_nodes(&tree) {
-                assert_eq!(node.far_field, SolidHarmonic::irregular(p), "p={p}");
+                assert_eq!(node.mass_distribution, SolidHarmonic::irregular(p), "p={p}");
             }
         }
     }
@@ -347,7 +350,7 @@ mod tests {
             let bodies = random_bodies(9, 60);
             let tree = tree_of(&bodies, p);
             for node in all_nodes(&tree) {
-                assert_eq!(node.local_field, SolidHarmonic::regular(p), "p={p}");
+                assert_eq!(node.external_potential, SolidHarmonic::regular(p), "p={p}");
             }
         }
     }
