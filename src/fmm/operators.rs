@@ -39,47 +39,72 @@ pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic 
         panic!("M2M not defined for Regular harmonics")
     }
     let mut mp_shifted: SolidHarmonic = SolidHarmonic::irregular(mp.order());
-    let shift_size: f64 = shift.map(|dim| dim.powi(2)).iter().sum::<f64>().sqrt();
+    let harmonics_shifted: Vec<Complex> = shift_scale_harmonics(mp.order(), shift);
+    mix_harmonics(mp, &mut mp_shifted, harmonics_shifted.as_slice());
+    return mp_shifted;
+}
 
-    // handle zero shift case
-    let harmonics_shifted: Vec<Complex> = if shift_size == 0.0 {
-        let mut h: Vec<Complex> = harmonics(shift, mp.order());
+fn shift_scale_harmonics(order: usize, shift: Vec3) -> Vec<Complex> {
+    let shift_size: f64 = shift.map(|dim| dim.powi(2)).iter().sum::<f64>().sqrt();
+    if shift_size == 0.0 {
+        let mut h: Vec<Complex> = harmonics(shift, order);
         for m in h.iter_mut() {
             *m = Complex { re: 0.0, im: 0.0 }
         }
         h[0] = Complex { re: 1.0, im: 0.0 };
         h
     } else {
-        harmonics(shift, mp.order())
+        harmonics(shift, order)
             .iter()
             .enumerate()
             .map(|(i, h)| *h * shift_size.powi(from_index(i).0 as i32))
             .collect()
-    };
+    }
+}
 
+fn mix_harmonics(mp: &SolidHarmonic, mp_shifted: &mut SolidHarmonic, shifted_moments: &[Complex]) {
     for n in 0..=mp_shifted.order() {
         let ni: i64 = n as i64;
+
         for m in -ni..=ni {
             let idx: usize = to_index(ni, m);
             let slot: &mut Complex = &mut mp_shifted.coeffs_mut()[idx];
-
-            for lambda in 0..=ni {
-                for mu in -(lambda as i64)..=(lambda as i64) {
-                    if ni - lambda < (m - mu).abs() {
-                        continue;
-                    } else {
-                        let ep: f64 = epsilon(m, mu);
-                        let bin: f64 =
-                            (binomial(ni + m, lambda + mu) * binomial(ni - m, lambda - mu)).sqrt();
-                        let h: Complex = harmonics_shifted[to_index(lambda, mu)].conj()
-                            * mp.get(ni - lambda, m - mu);
-                        *slot += h * ep * bin;
-                    }
-                }
-            }
+            *slot += get_mixed_moment(mp, shifted_moments, ni, m);
         }
     }
-    return mp_shifted;
+}
+
+fn get_mixed_moment(mp: &SolidHarmonic, shifted_moments: &[Complex], n: i64, m: i64) -> Complex {
+    let mut acc: Complex = Complex::zero();
+    for lambda in 0..=n {
+        let lb: i64 = (-(lambda as i64)).max(m - (n - lambda));
+        let ub: i64 = (lambda as i64).min(m + (n - lambda));
+        for mu in lb..=ub {
+            let factor: f64 = get_mix_coefficient_factor(n, m, lambda, mu);
+            let h: Complex = get_mix_coefficient_direction(mp, shifted_moments, n, m, lambda, mu);
+            acc += h * factor;
+        }
+    }
+    return acc;
+}
+
+fn get_mix_coefficient_factor(n: i64, m: i64, lambda: i64, mu: i64) -> f64 {
+    let ep: f64 = epsilon(m, mu);
+    let bin: f64 = (binomial(n + m, lambda + mu) * binomial(n - m, lambda - mu)).sqrt();
+    return ep * bin;
+}
+
+fn get_mix_coefficient_direction(
+    mp: &SolidHarmonic,
+    shifted_moments: &[Complex],
+    n: i64,
+    m: i64,
+    lambda: i64,
+    mu: i64,
+) -> Complex {
+    let shifted: Complex = shifted_moments[to_index(lambda, mu)].conj();
+    let unshifted: Complex = mp.get(n - lambda, m - mu);
+    return shifted * unshifted;
 }
 
 // small helper because the hermonics aren't using standard convention for negative m
