@@ -694,6 +694,251 @@ mod tests {
         }
     }
 
+    // ------------------------------------ the pieces of multipole_to_multipole
+
+    /// Distinct, unstructured complex numbers, so a wrong index or a swapped
+    /// argument changes the answer instead of cancelling.
+    fn distinct(k: usize, offset: f64) -> Complex {
+        Complex {
+            re: offset + 0.7 * k as f64,
+            im: 0.1 - 0.5 * offset + 0.3 * k as f64,
+        }
+    }
+
+    /// An irregular harmonic of order `p` holding `distinct(k, offset)` in slot `k`.
+    fn distinct_moments(p: usize, offset: f64) -> SolidHarmonic {
+        let mut mp = SolidHarmonic::irregular(p);
+        for (k, c) in mp.coeffs_mut().iter_mut().enumerate() {
+            *c = distinct(k, offset);
+        }
+        mp
+    }
+
+    fn table_of(p: usize, offset: f64) -> Vec<Complex> {
+        (0..(p + 1) * (p + 1))
+            .map(|k| distinct(k, offset))
+            .collect()
+    }
+
+    // ---- shift_scale_harmonics: the table of R_l^m(shift) = |shift|^l Y_l^m
+
+    #[test]
+    fn the_table_has_one_entry_per_slot_for_the_order_of_the_input() {
+        for p in 0..=4 {
+            let table = shift_scale_harmonics(p, [0.3, -0.4, 0.5]);
+            assert_eq!(table.len(), (p + 1) * (p + 1), "order {p}");
+        }
+    }
+
+    /// Hand values up to degree 2 for t = (0.3, -0.4, 0.5), with w = x + iy:
+    /// R_1^0 = z, R_1^1 = -w/sqrt2, R_2^0 = (3z^2 - r^2)/2,
+    /// R_2^1 = -3zw/sqrt6, R_2^2 = 3w^2/sqrt24, and R_l^-m = conj(R_l^m).
+    #[test]
+    fn the_table_matches_hand_values_up_to_degree_two() {
+        let (x, y, z) = (0.3, -0.4, 0.5);
+        let r2 = x * x + y * y + z * z;
+        let w = Complex { re: x, im: y };
+        let w2 = Complex {
+            re: x * x - y * y,
+            im: 2.0 * x * y,
+        };
+        let r11 = w * (-1.0 / 2f64.sqrt());
+        let r21 = w * (-3.0 * z / 6f64.sqrt());
+        let r22 = w2 * (3.0 / 24f64.sqrt());
+        let one = |re: f64| Complex { re, im: 0.0 };
+        let want = [
+            (0, 0, one(1.0)),
+            (1, 0, one(z)),
+            (1, 1, r11),
+            (1, -1, r11.conj()),
+            (2, 0, one((3.0 * z * z - r2) / 2.0)),
+            (2, 1, r21),
+            (2, -1, r21.conj()),
+            (2, 2, r22),
+            (2, -2, r22.conj()),
+        ];
+        let table = shift_scale_harmonics(3, [x, y, z]);
+        for (n, m, w) in want {
+            assert_close(table[to_index(n, m)], w, 1e-14, &format!("R_{n}^{m}"));
+        }
+    }
+
+    /// On the z-axis only m = 0 survives, and R_l^0 = z^l, for either sign of z.
+    #[test]
+    fn on_the_z_axis_the_table_is_the_powers_of_z() {
+        for z in [0.7, -0.7] {
+            let table = shift_scale_harmonics(4, [0.0, 0.0, z]);
+            for l in 0..=4i64 {
+                for m in -l..=l {
+                    let want = if m == 0 { z.powi(l as i32) } else { 0.0 };
+                    assert_close(
+                        table[to_index(l, m)],
+                        Complex { re: want, im: 0.0 },
+                        1e-14,
+                        &format!("z={z} R_{l}^{m}"),
+                    );
+                }
+            }
+        }
+    }
+
+    /// R_l^m is homogeneous of degree l: scaling the shift by s scales degree l by s^l.
+    #[test]
+    fn scaling_the_shift_scales_degree_l_by_s_to_the_l() {
+        let t = [0.3, -0.4, 0.5];
+        let s = 2.5;
+        let p = 4;
+        let base = shift_scale_harmonics(p, t);
+        let scaled = shift_scale_harmonics(p, t.map(|c| s * c));
+        let mut checked_nonzero = false;
+        for k in 0..base.len() {
+            let l = from_index(k).0 as i32;
+            checked_nonzero |= l > 0 && base[k].re.abs() + base[k].im.abs() > 1e-3;
+            assert_close(scaled[k], base[k] * s.powi(l), 1e-12, &format!("slot {k}"));
+        }
+        assert!(checked_nonzero, "nothing above degree 0 was compared");
+    }
+
+    /// A zero shift has no direction, so the table is just the constant R_0^0 = 1.
+    #[test]
+    fn a_zero_shift_gives_one_in_slot_zero_and_zero_elsewhere() {
+        let table = shift_scale_harmonics(3, [0.0; 3]);
+        for (k, c) in table.iter().enumerate() {
+            let want = if k == 0 { 1.0 } else { 0.0 };
+            assert_eq!((c.re, c.im), (want, 0.0), "slot {k}");
+        }
+    }
+
+    // ---- get_mix_coefficient_factor: the integer weight of one term
+
+    /// Worked by hand from eps(m,mu) * sqrt(C(n+m, l+mu) * C(n-m, l-mu)).
+    #[test]
+    fn the_factor_matches_hand_values() {
+        let cases: [((i64, i64, i64, i64), f64); 6] = [
+            ((0, 0, 0, 0), 1.0),
+            ((1, 0, 1, 0), 1.0),           // C(1,1)C(1,1) = 1
+            ((2, 0, 1, 0), 2.0),           // sqrt(C(2,1)C(2,1)) = 2
+            ((2, 1, 1, 0), 3f64.sqrt()),   // sqrt(C(3,1)C(1,1))
+            ((2, -1, 1, -1), 3f64.sqrt()), // eps = (-1)(-1)(+1) = +1
+            ((4, -2, 1, 1), -1.0),         // eps(-2,1) = -1, C(2,2)C(6,0) = 1
+        ];
+        for ((n, m, l, mu), want) in cases {
+            let got = get_mix_coefficient_factor(n, m, l, mu);
+            assert!(
+                (got - want).abs() < 1e-14,
+                "(n,m,l,mu)=({n},{m},{l},{mu}): got {got}, want {want}"
+            );
+        }
+    }
+
+    /// A term whose source slot (n-l, m-mu) does not exist has weight zero.
+    #[test]
+    fn the_factor_is_zero_when_the_source_slot_does_not_exist() {
+        // |m - mu| = 2 > n - l = 0
+        assert_eq!(get_mix_coefficient_factor(1, 1, 1, -1), 0.0);
+        // |mu| > l
+        assert_eq!(get_mix_coefficient_factor(3, 0, 1, 2), 0.0);
+    }
+
+    // ---- get_mix_coefficient_direction: conj(table[l,mu]) * moment[n-l, m-mu]
+
+    /// n=3, m=0, l=2, mu=-1 pairs table slot (2,-1) = 5 with moment slot (1,1) = 3.
+    /// The indices are written out as numbers, not computed with `to_index`.
+    #[test]
+    fn the_direction_pairs_the_conjugated_table_entry_with_the_right_moment() {
+        let mp = distinct_moments(3, 1.0);
+        let table = table_of(3, 4.0);
+        let got = get_mix_coefficient_direction(&mp, &table, 3, 0, 2, -1);
+        let want = table[5].conj() * mp.coeffs()[3];
+        assert_close(got, want, 1e-14, "direction");
+        // the pairing must matter: a different pairing gives a different number
+        let wrong = table[5] * mp.coeffs()[3];
+        assert!((got.im - wrong.im).abs() > 1e-6, "conjugate not detectable");
+    }
+
+    // ---- get_mixed_moment: the sum for one slot
+
+    /// Order 0: only the mass, scaled by the (conjugated) constant of the table.
+    #[test]
+    fn the_mixed_moment_at_degree_zero_is_the_mass_times_the_table_constant() {
+        let mp = distinct_moments(2, 1.0);
+        let table = table_of(2, 4.0);
+        let got = get_mixed_moment(&mp, &table, 0, 0);
+        assert_close(got, table[0].conj() * mp.coeffs()[0], 1e-14, "(0,0)");
+    }
+
+    /// n=1, m=0 gets l=0 (mu=0) and l=1 (mu=0 only, since |0-mu| <= 0):
+    ///   conj(t00) M10 + conj(t10) M00.
+    /// n=1, m=1 gets l=0 (mu=0) and l=1 (mu=1 only):
+    ///   conj(t00) M11 + conj(t11) M00.
+    /// Slots: (0,0)=0, (1,-1)=1, (1,0)=2, (1,1)=3.
+    #[test]
+    fn the_mixed_moment_at_degree_one_matches_the_hand_sum() {
+        let mp = distinct_moments(2, 1.0);
+        let t = table_of(2, 4.0);
+        let m = mp.coeffs();
+        assert_close(
+            get_mixed_moment(&mp, &t, 1, 0),
+            t[0].conj() * m[2] + t[2].conj() * m[0],
+            1e-13,
+            "(1,0)",
+        );
+        assert_close(
+            get_mixed_moment(&mp, &t, 1, 1),
+            t[0].conj() * m[3] + t[3].conj() * m[0],
+            1e-13,
+            "(1,1)",
+        );
+        assert_close(
+            get_mixed_moment(&mp, &t, 1, -1),
+            t[0].conj() * m[1] + t[1].conj() * m[0],
+            1e-13,
+            "(1,-1)",
+        );
+    }
+
+    /// n=2, m=0, worked term by term from the formula. The weights are
+    ///   l=0:       mu=0: 1
+    ///   l=1: mu=-1: -1;  mu=0: 2;  mu=1: -1
+    ///   l=2:       mu=0: 1
+    /// Slots: (0,0)=0, (1,-1)=1, (1,0)=2, (1,1)=3, (2,0)=6.
+    #[test]
+    fn the_mixed_moment_at_degree_two_matches_the_hand_sum() {
+        let mp = distinct_moments(2, 1.0);
+        let t = table_of(2, 4.0);
+        let m = mp.coeffs();
+        let want = t[0].conj() * m[6] - t[1].conj() * m[3] + t[2].conj() * m[2] * 2.0
+            - t[3].conj() * m[1]
+            + t[6].conj() * m[0];
+        assert_close(get_mixed_moment(&mp, &t, 2, 0), want, 1e-12, "(2,0)");
+    }
+
+    // ---- mix_harmonics: fills every slot
+
+    #[test]
+    fn mixing_fills_every_slot_with_that_slots_mixed_moment() {
+        for p in 0..=4 {
+            let mp = distinct_moments(p, 1.0);
+            let t = table_of(p, 4.0);
+            let mut out = SolidHarmonic::irregular(p);
+            mix_harmonics(&mp, &mut out, &t);
+            assert!(matches!(out, SolidHarmonic::Irregular(_)));
+            for (k, got) in out.coeffs().iter().enumerate() {
+                let (n, m) = from_index(k);
+                assert_close(
+                    *got,
+                    get_mixed_moment(&mp, &t, n, m),
+                    1e-12,
+                    &format!("p={p} slot {k}"),
+                );
+                assert!(
+                    got.re.abs() + got.im.abs() > 0.0,
+                    "p={p} slot {k} was left empty"
+                );
+            }
+        }
+    }
+
     // ------------------------------------------------------------ misuse
 
     /// A shift is defined for multipole moments only; a local expansion has a
