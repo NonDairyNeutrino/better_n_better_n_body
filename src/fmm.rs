@@ -7,10 +7,6 @@ mod tree;
 use crate::shared::{Body, System, Vec3};
 use tree::FmmTree;
 
-fn traverse(tree: &mut FmmTree) {
-    todo!()
-}
-
 fn downward_pass(tree: &mut FmmTree) {
     todo!()
 }
@@ -22,7 +18,7 @@ fn simulate_step(bodies: &mut [Body], time_step: f64, p: usize) {
     let mut tree: FmmTree = FmmTree::new(system, p);
     // other steps
     tree.accumulate_mass_distribution();
-    traverse(&mut tree);
+    tree.assemble_potential();
     downward_pass(&mut tree);
 
     for (body, acc) in bodies.iter_mut().zip(accelerations) {

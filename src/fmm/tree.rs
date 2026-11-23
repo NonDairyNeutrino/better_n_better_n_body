@@ -1,7 +1,9 @@
 use std::array::from_fn;
 
 use crate::fmm::harmonic::SolidHarmonic;
-use crate::fmm::operators::{multipole_to_multipole, particle_to_multipole};
+use crate::fmm::operators::{
+    multipole_to_local, multipole_to_multipole, particle_to_multipole, particle_to_particle,
+};
 use crate::shared::{System, Vec3};
 
 const MAX_LEAF_BODIES: usize = 2;
@@ -63,6 +65,40 @@ impl<'a> FmmTree<'a> {
             }
         }
     }
+
+    pub fn assemble_potential(&self) {
+        self.interact(self);
+        todo!()
+    }
+    fn interact(&self, source: &FmmTree) {
+        if well_separated(&self.system, &source.system) {
+            multipole_to_local();
+        } else if self.is_leaf() && source.is_leaf() {
+            particle_to_particle();
+        } else if self.is_leaf() {
+            for child in source.children.iter() {
+                self.interact(child);
+            }
+        } else if source.is_leaf() {
+            for child in self.children.iter() {
+                child.interact(source);
+            }
+        } else {
+            // split the larger one
+        }
+    }
+}
+
+const THETA: f64 = 0.5;
+fn well_separated(target: &System, source: &System) -> bool {
+    let dist2: f64 = target
+        .center
+        .iter()
+        .zip(source.center)
+        .map(|(t, s)| (t - s).powi(2))
+        .sum::<f64>();
+
+    3.0_f64 * (target.hw + source.hw).powi(2) < THETA.powi(2) * dist2
 }
 
 #[cfg(test)]
