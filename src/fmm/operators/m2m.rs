@@ -93,7 +93,7 @@ fn epsilon(m: i64, mu: i64) -> f64 {
     sigma(m) * sigma(mu) * sigma(m - mu)
 }
 
-fn binomial(n: i64, k: i64) -> f64 {
+pub(crate) fn binomial(n: i64, k: i64) -> f64 {
     if k < 0 || n < k {
         return 0.0;
     } else {
