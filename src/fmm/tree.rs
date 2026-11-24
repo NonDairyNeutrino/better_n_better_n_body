@@ -409,7 +409,11 @@ mod tests {
             let bodies = random_bodies(9, 60);
             let tree = tree_of(&bodies, p);
             for node in all_nodes(&tree) {
-                assert_eq!(node.external_potential, SolidHarmonic::regular(p), "p={p}");
+                assert_eq!(
+                    *node.external_potential.borrow(),
+                    SolidHarmonic::regular(p),
+                    "p={p}"
+                );
             }
         }
     }
@@ -512,7 +516,7 @@ mod tests {
                 SolidHarmonic::Irregular(_)
             ));
             assert_eq!(leaf.mass_distribution.order(), p);
-            assert_eq!(leaf.external_potential, SolidHarmonic::regular(p));
+            assert_eq!(*leaf.external_potential.borrow(), SolidHarmonic::regular(p));
         }
     }
 
