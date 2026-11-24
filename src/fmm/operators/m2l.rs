@@ -1,7 +1,7 @@
 use crate::{
     fmm::{
         complex::Complex,
-        harmonic::{SolidHarmonic, from_index, harmonics},
+        harmonic::{SolidHarmonic, from_index, harmonics, to_index},
         operators::m2m::binomial,
     },
     shared::Vec3,
@@ -33,11 +33,40 @@ fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
 }
 
 fn convert_moments(mp: &SolidHarmonic, local: &mut SolidHarmonic, table: &[Complex]) {
-    todo!()
+    for j in 0..=local.order() {
+        let ji: i64 = j as i64;
+
+        for k in -ji..=ji {
+            let idx: usize = to_index(ji, k);
+            let slot: &mut Complex = &mut local.coeffs_mut()[idx];
+            *slot += get_local_coefficient(mp, table, ji, k);
+        }
+    }
 }
 
 fn get_local_coefficient(mp: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -> Complex {
-    todo!()
+    let mut acc: Complex = Complex::zero();
+    for n in 0..=(mp.order() as i64) {
+        for m in -n..=n {
+            let factor: f64 = conversion_sign(j, k, m) * get_conversion_factor(n, m, j, k);
+            let h: Complex = get_conversion_direction(mp, table, n, m, j, k);
+            acc += h * factor;
+        }
+    }
+    return acc;
+}
+
+fn get_conversion_direction(
+    mp: &SolidHarmonic,
+    table: &[Complex],
+    n: i64,
+    m: i64,
+    j: i64,
+    k: i64,
+) -> Complex {
+    let tabulated: Complex = table[to_index(j + n, m - k)];
+    let moment: Complex = mp.get(n, m);
+    return tabulated * moment;
 }
 
 fn get_conversion_factor(n: i64, m: i64, j: i64, k: i64) -> f64 {
