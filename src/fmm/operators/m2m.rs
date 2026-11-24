@@ -110,7 +110,9 @@ mod tests {
     use super::*;
     use crate::fmm::{
         operators::p2m::particle_to_multipole,
-        test_util::{assert_close, bodies_around, direct_potential},
+        test_util::{
+            assert_close, bodies_around, direct_potential, distinct, distinct_moments, table_of,
+        },
     };
     use std::array::from_fn;
 
@@ -405,30 +407,6 @@ mod tests {
     }
 
     // ------------------------------------ the pieces of multipole_to_multipole
-
-    /// Distinct, unstructured complex numbers, so a wrong index or a swapped
-    /// argument changes the answer instead of cancelling.
-    fn distinct(k: usize, offset: f64) -> Complex {
-        Complex {
-            re: offset + 0.7 * k as f64,
-            im: 0.1 - 0.5 * offset + 0.3 * k as f64,
-        }
-    }
-
-    /// An irregular harmonic of order `p` holding `distinct(k, offset)` in slot `k`.
-    fn distinct_moments(p: usize, offset: f64) -> SolidHarmonic {
-        let mut mp = SolidHarmonic::irregular(p);
-        for (k, c) in mp.coeffs_mut().iter_mut().enumerate() {
-            *c = distinct(k, offset);
-        }
-        mp
-    }
-
-    fn table_of(p: usize, offset: f64) -> Vec<Complex> {
-        (0..(p + 1) * (p + 1))
-            .map(|k| distinct(k, offset))
-            .collect()
-    }
 
     // ---- shift_scale_harmonics: the table of R_l^m(shift) = |shift|^l Y_l^m
 
