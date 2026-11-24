@@ -1,4 +1,5 @@
 use std::array::from_fn;
+use std::cell::RefCell;
 
 use crate::fmm::harmonic::SolidHarmonic;
 use crate::fmm::operators::{
@@ -10,13 +11,13 @@ const MAX_LEAF_BODIES: usize = 2;
 pub struct FmmTree<'a> {
     system: System<'a>,
     mass_distribution: SolidHarmonic, // the mass distribution in the cell as moments
-    external_potential: SolidHarmonic, // the potential field felt in the cell
+    external_potential: RefCell<SolidHarmonic>, // the potential field felt in the cell
     children: Vec<FmmTree<'a>>,
 }
 impl<'a> FmmTree<'a> {
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
         let mass_distribution: SolidHarmonic = SolidHarmonic::irregular(p);
-        let external_potential: SolidHarmonic = SolidHarmonic::regular(p);
+        let external_potential: RefCell<SolidHarmonic> = RefCell::new(SolidHarmonic::regular(p));
 
         if MAX_LEAF_BODIES < system.bodies.len() {
             // split
@@ -72,7 +73,9 @@ impl<'a> FmmTree<'a> {
     }
     fn interact(&self, source: &FmmTree) {
         if well_separated(&self.system, &source.system) {
-            multipole_to_local();
+            let shift = from_fn(|i| self.system.center[i] - source.system.center[i]);
+            *self.external_potential.borrow_mut() +=
+                &multipole_to_local(&source.mass_distribution, shift);
         } else if self.is_leaf() && source.is_leaf() {
             particle_to_particle();
         } else if self.is_leaf() {
