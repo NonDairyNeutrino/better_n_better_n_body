@@ -77,6 +77,7 @@ impl<'a> FmmTree<'a> {
             *self.external_potential.borrow_mut() +=
                 &multipole_to_local(&source.mass_distribution, shift);
         } else if self.is_leaf() && source.is_leaf() {
+            // if the cells are close enough, just add the bodies directly
             particle_to_particle();
         } else if self.is_leaf() {
             for child in source.children.iter() {
@@ -86,8 +87,15 @@ impl<'a> FmmTree<'a> {
             for child in self.children.iter() {
                 child.interact(source);
             }
-        } else {
+        } else if self.system.hw >= source.system.hw {
             // split the larger one
+            for child in self.children.iter() {
+                child.interact(source);
+            }
+        } else {
+            for child in source.children.iter() {
+                self.interact(child);
+            }
         }
     }
 }
