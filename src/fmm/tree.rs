@@ -115,6 +115,7 @@ fn well_separated(target: &System, source: &System) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fmm::test_util::assert_close;
     use crate::shared::test_util::*;
     use crate::shared::{Body, ORIGIN, RNG, Vec3};
 
@@ -648,6 +649,205 @@ mod tests {
                     .count();
                 assert!(internal_with_mass > 0, "{name}: nothing internal to test");
             }
+        }
+    }
+
+    // ----------------------------------------------------------- interacting
+
+    /// Fixtures small enough to convert every far pair at a realistic order in
+    /// a debug build: a few bodies, a random cloud, and the deep uneven clump.
+    fn interaction_fixtures() -> Vec<(String, Vec<Body>)> {
+        vec![
+            ("random(20)".to_string(), random_bodies(120, 20)),
+            ("random(100)".to_string(), random_bodies(300, 100)),
+            ("clustered(30)".to_string(), clustered(30)),
+        ]
+    }
+
+    /// The pairs `interact` must produce, found again from the same rules with a
+    /// work list instead of recursion: (far pairs, near pairs) as (target, source).
+    /// A well-separated pair is converted (far); two leaves that are not well
+    /// separated are summed directly (near); otherwise the larger cell is split,
+    /// the target on a tie.
+    #[allow(clippy::type_complexity)]
+    fn expected_pairs<'t, 'a>(
+        root: &'t FmmTree<'a>,
+    ) -> (
+        Vec<(&'t FmmTree<'a>, &'t FmmTree<'a>)>,
+        Vec<(&'t FmmTree<'a>, &'t FmmTree<'a>)>,
+    ) {
+        let (mut far, mut near) = (vec![], vec![]);
+        let mut work = vec![(root, root)];
+        while let Some((t, s)) = work.pop() {
+            if well_separated(&t.system, &s.system) {
+                far.push((t, s));
+            } else if t.is_leaf() && s.is_leaf() {
+                near.push((t, s));
+            } else {
+                let split_target = if t.is_leaf() {
+                    false
+                } else if s.is_leaf() {
+                    true
+                } else {
+                    t.system.hw >= s.system.hw
+                };
+                if split_target {
+                    work.extend(t.children.iter().map(|c| (c, s)));
+                } else {
+                    work.extend(s.children.iter().map(|c| (t, c)));
+                }
+            }
+        }
+        (far, near)
+    }
+
+    /// The nodes from the root down to `target`, both included.
+    fn chain_to<'t, 'a>(root: &'t FmmTree<'a>, target: &FmmTree) -> Option<Vec<&'t FmmTree<'a>>> {
+        if std::ptr::eq(root, target) {
+            return Some(vec![root]);
+        }
+        for child in &root.children {
+            if let Some(mut chain) = chain_to(child, target) {
+                chain.insert(0, root);
+                return Some(chain);
+            }
+        }
+        None
+    }
+
+    /// For every leaf and every body, the number of times that body is accounted
+    /// for: through a far pair at one of the leaf's ancestors, or through a near
+    /// pair at the leaf itself. It must be exactly once, which is what makes the
+    /// split of the potential into near and far exact.
+    #[test]
+    fn every_leaf_accounts_for_every_body_exactly_once() {
+        for (name, bodies) in interaction_fixtures() {
+            let tree = tree_of(&bodies, 2);
+            let (far, near) = expected_pairs(&tree);
+            let index = |b: &Body| {
+                (b as *const Body as usize - bodies.as_ptr() as usize) / std::mem::size_of::<Body>()
+            };
+            for leaf in leaves(&tree) {
+                let chain = chain_to(&tree, leaf).unwrap();
+                let mut seen = vec![0usize; bodies.len()];
+                for (t, s) in &far {
+                    if chain.iter().any(|a| std::ptr::eq(*a, *t)) {
+                        for b in bodies_beneath(s) {
+                            seen[index(b)] += 1;
+                        }
+                    }
+                }
+                for (t, s) in &near {
+                    if std::ptr::eq(*t, leaf) {
+                        for b in bodies_beneath(s) {
+                            seen[index(b)] += 1;
+                        }
+                    }
+                }
+                assert!(
+                    seen.iter().all(|&c| c == 1),
+                    "{name}: a leaf of {} bodies sees some body {:?} times",
+                    leaf.system.bodies.len(),
+                    seen.iter().find(|&&c| c != 1)
+                );
+            }
+            assert!(!near.is_empty(), "{name}: no near pairs at all");
+            if bodies.len() >= 100 {
+                assert!(!far.is_empty(), "{name}: no far pairs, nothing is tested");
+            }
+        }
+    }
+
+    /// Each node's external potential must be exactly the conversions of the far
+    /// partners the rules give it, one per partner and none for any other.
+    #[test]
+    fn interacting_gives_each_node_the_conversions_of_its_far_partners() {
+        for (name, bodies) in interaction_fixtures() {
+            let p = 4;
+            let mut tree = tree_of(&bodies, p);
+            tree.accumulate_mass_distribution();
+            tree.interact(&tree);
+            let (far, _) = expected_pairs(&tree);
+            let mut nonzero_nodes = 0;
+            for node in all_nodes(&tree) {
+                let mut want = SolidHarmonic::regular(p);
+                for (t, s) in &far {
+                    if std::ptr::eq(*t, node) {
+                        let shift: Vec3 = from_fn(|i| t.system.center[i] - s.system.center[i]);
+                        want += &multipole_to_local(&s.mass_distribution, shift);
+                    }
+                }
+                let got = node.external_potential.borrow();
+                for (k, (g, w)) in got.coeffs().iter().zip(want.coeffs()).enumerate() {
+                    assert_close(
+                        *g,
+                        *w,
+                        1e-12 * (1.0 + w.re.abs() + w.im.abs()),
+                        &format!(
+                            "{name}: node of {} bodies, slot {k}",
+                            bodies_beneath(node).len()
+                        ),
+                    );
+                }
+                if want.coeffs().iter().any(|c| c.re != 0.0 || c.im != 0.0) {
+                    nonzero_nodes += 1;
+                }
+            }
+            if bodies.len() >= 100 {
+                assert!(
+                    nonzero_nodes > 0,
+                    "{name}: every external potential is zero"
+                );
+            }
+        }
+    }
+
+    /// The physics of the whole stage. At a point inside a leaf, the external
+    /// potentials of the leaf and all its ancestors, plus the bodies of the leaf's
+    /// near partners summed directly, must give the potential of all the bodies.
+    #[test]
+    fn external_potentials_plus_near_bodies_give_the_potential_of_all_bodies() {
+        for (name, bodies) in interaction_fixtures() {
+            if bodies.len() < 20 {
+                continue;
+            }
+            let p = 6;
+            let mut tree = tree_of(&bodies, p);
+            tree.accumulate_mass_distribution();
+            tree.interact(&tree);
+            let (_, near) = expected_pairs(&tree);
+            let mut worst: f64 = 0.0;
+            let mut leaves_with_far_part = 0;
+            for leaf in leaves(&tree) {
+                if leaf.system.bodies.is_empty() {
+                    continue;
+                }
+                let chain = chain_to(&tree, leaf).unwrap();
+                let x: Vec3 =
+                    from_fn(|i| leaf.system.center[i] + [0.3, -0.2, 0.4][i] * leaf.system.hw);
+                let far_part: f64 = chain
+                    .iter()
+                    .map(|a| {
+                        let rel: Vec3 = from_fn(|i| x[i] - a.system.center[i]);
+                        a.external_potential.borrow().value(rel).re
+                    })
+                    .sum();
+                let near_part: f64 = near
+                    .iter()
+                    .filter(|(t, _)| std::ptr::eq(*t, leaf))
+                    .flat_map(|(_, s)| s.system.bodies.iter())
+                    .map(|b| b.mass / b.distance(&x))
+                    .sum();
+                let all: f64 = bodies.iter().map(|b| b.mass / b.distance(&x)).sum();
+                worst = worst.max((far_part + near_part - all).abs() / all);
+                if far_part.abs() > 0.01 * all {
+                    leaves_with_far_part += 1;
+                }
+            }
+            assert!(
+                leaves_with_far_part > 0,
+                "{name}: no leaf got a real far part"
+            );
         }
     }
 }
