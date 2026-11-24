@@ -1,5 +1,8 @@
 use crate::{
-    fmm::{complex::Complex, harmonic::SolidHarmonic},
+    fmm::{
+        complex::Complex,
+        harmonic::{SolidHarmonic, from_index, harmonics},
+    },
     shared::Vec3,
 };
 
@@ -16,7 +19,16 @@ pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
 }
 
 fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
-    todo!()
+    let r: f64 = shift.map(|e| e.powi(2)).iter().sum::<f64>().sqrt();
+    if r == 0.0 {
+        panic!("Cannot use zero shift")
+    }
+    let harms: Vec<Complex> = harmonics(shift, 2 * order);
+    return harms
+        .iter()
+        .enumerate()
+        .map(|(i, e)| *e * r.powi(-(from_index(i).0 + 1) as i32))
+        .collect();
 }
 
 fn convert_moments(mp: &SolidHarmonic, local: &mut SolidHarmonic, table: &[Complex]) {
