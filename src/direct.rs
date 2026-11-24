@@ -1,6 +1,9 @@
 use crate::shared::{Body, ORIGIN, Vec3, gravity};
 
-fn calculate_acceleration_from_system(system: &[Body], pos: &Vec3) -> Vec3 {
+pub fn calculate_acceleration_from_system<'b>(
+    system: impl IntoIterator<Item = &'b Body>,
+    pos: &Vec3,
+) -> Vec3 {
     let mut this_acc: Vec3 = ORIGIN;
 
     for that in system {
@@ -19,7 +22,7 @@ pub fn simulate_step(system: &mut [Body], time_step: f64) {
     let mut accelerations: Vec<Vec3> = Vec::with_capacity(system.len());
 
     for this in system.iter() {
-        let this_acc: Vec3 = calculate_acceleration_from_system(system, &this.pos);
+        let this_acc: Vec3 = calculate_acceleration_from_system(system.iter(), &this.pos);
         accelerations.push(this_acc);
     }
 

@@ -13,11 +13,14 @@ pub struct FmmTree<'a> {
     mass_distribution: SolidHarmonic, // the mass distribution in the cell as moments
     external_potential: RefCell<SolidHarmonic>, // the potential field felt in the cell
     children: Vec<FmmTree<'a>>,
+    acceleration: RefCell<Vec<Vec3>>,
 }
 impl<'a> FmmTree<'a> {
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
         let mass_distribution: SolidHarmonic = SolidHarmonic::irregular(p);
         let external_potential: RefCell<SolidHarmonic> = RefCell::new(SolidHarmonic::regular(p));
+        let acceleration: RefCell<Vec<[f64; 3]>> =
+            RefCell::new(vec![[0.0; 3]; system.bodies.len()]);
 
         if MAX_LEAF_BODIES < system.bodies.len() {
             // split
@@ -34,6 +37,7 @@ impl<'a> FmmTree<'a> {
                 children,
                 mass_distribution,
                 external_potential,
+                acceleration,
             };
         } else {
             // don't split
@@ -44,6 +48,7 @@ impl<'a> FmmTree<'a> {
                 children,
                 mass_distribution,
                 external_potential,
+                acceleration,
             };
         }
     }
@@ -78,7 +83,11 @@ impl<'a> FmmTree<'a> {
                 &multipole_to_local(&source.mass_distribution, shift);
         } else if self.is_leaf() && source.is_leaf() {
             // if the cells are close enough, just add the bodies directly
-            particle_to_particle();
+            particle_to_particle(
+                &self.system.bodies,
+                &source.system.bodies,
+                &mut self.acceleration.borrow_mut(),
+            );
         } else if self.is_leaf() {
             for child in source.children.iter() {
                 self.interact(child);
