@@ -19,8 +19,6 @@ impl<'a> FmmTree<'a> {
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
         let mass_distribution: SolidHarmonic = SolidHarmonic::irregular(p);
         let external_potential: RefCell<SolidHarmonic> = RefCell::new(SolidHarmonic::regular(p));
-        let acceleration: RefCell<Vec<[f64; 3]>> =
-            RefCell::new(vec![[0.0; 3]; system.bodies.len()]);
 
         if MAX_LEAF_BODIES < system.bodies.len() {
             // split
@@ -31,6 +29,7 @@ impl<'a> FmmTree<'a> {
                 let child_tree: FmmTree = FmmTree::new(child, p);
                 children.push(child_tree);
             }
+            let acceleration: RefCell<Vec<[f64; 3]>> = RefCell::new(Vec::new());
 
             return FmmTree {
                 system: new_system,
@@ -42,6 +41,8 @@ impl<'a> FmmTree<'a> {
         } else {
             // don't split
             let children: Vec<FmmTree<'a>> = Vec::new();
+            let acceleration: RefCell<Vec<[f64; 3]>> =
+                RefCell::new(vec![[0.0; 3]; system.bodies.len()]);
 
             return FmmTree {
                 system,
@@ -124,7 +125,7 @@ fn well_separated(target: &System, source: &System) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fmm::test_util::assert_close;
+    use crate::fmm::test_util::{assert_close, pull_from};
     use crate::shared::test_util::*;
     use crate::shared::{Body, ORIGIN, RNG, Vec3};
 
@@ -857,6 +858,58 @@ mod tests {
                 leaves_with_far_part > 0,
                 "{name}: no leaf got a real far part"
             );
+        }
+    }
+
+    /// After interacting, each leaf holds, for each of its bodies, the pull of
+    /// every body in the leaf's near partners (itself left out), with Newton's
+    /// law written out. Internal nodes hold no accelerations at all.
+    #[test]
+    fn interacting_gives_each_leaf_the_pull_of_its_near_partners() {
+        for (name, bodies) in interaction_fixtures() {
+            let mut tree = tree_of(&bodies, 2);
+            tree.accumulate_mass_distribution();
+            tree.interact(&tree);
+            let (_, near) = expected_pairs(&tree);
+            let mut nonzero_bodies = 0;
+            for node in all_nodes(&tree) {
+                let got = node.acceleration.borrow();
+                if !node.is_leaf() {
+                    assert!(
+                        got.is_empty(),
+                        "{name}: an internal node holds accelerations"
+                    );
+                    continue;
+                }
+                assert_eq!(got.len(), node.system.bodies.len(), "{name}");
+                for (i, body) in node.system.bodies.iter().enumerate() {
+                    let mut want = [0.0; 3];
+                    for (t, s) in &near {
+                        if std::ptr::eq(*t, node) {
+                            for other in s.system.bodies.iter() {
+                                if !std::ptr::eq(*other, *body) {
+                                    let pull = pull_from(body.pos, other);
+                                    for d in 0..3 {
+                                        want[d] += pull[d];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for d in 0..3 {
+                        assert!(
+                            (got[i][d] - want[d]).abs() <= 1e-12 * (1.0 + want[d].abs()),
+                            "{name}: body {i} component {d}: got {}, want {}",
+                            got[i][d],
+                            want[d]
+                        );
+                    }
+                    if want.iter().any(|c| c.abs() > 0.0) {
+                        nonzero_bodies += 1;
+                    }
+                }
+            }
+            assert!(nonzero_bodies > 0, "{name}: no body has a near pull");
         }
     }
 }

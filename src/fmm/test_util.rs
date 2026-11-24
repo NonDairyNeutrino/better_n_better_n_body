@@ -2,7 +2,7 @@
 
 use crate::{
     fmm::{complex::Complex, harmonic::SolidHarmonic},
-    shared::{Body, RNG, Vec3},
+    shared::{Body, G, RNG, Vec3},
 };
 use std::array::from_fn;
 
@@ -65,4 +65,12 @@ pub fn table_of(p: usize, offset: f64) -> Vec<Complex> {
     (0..(p + 1) * (p + 1))
         .map(|k| distinct(k, offset))
         .collect()
+}
+
+/// The acceleration at `at` due to one body, with Newton's law written out:
+/// G m (x_source - x) / |x_source - x|^3. Independent of `shared::gravity`.
+pub fn pull_from(at: Vec3, source: &Body) -> Vec3 {
+    let d: Vec3 = from_fn(|i| source.pos[i] - at[i]);
+    let r: f64 = d.iter().map(|c| c * c).sum::<f64>().sqrt();
+    from_fn(|i| G * source.mass * d[i] / r.powi(3))
 }
