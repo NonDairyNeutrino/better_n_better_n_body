@@ -111,10 +111,10 @@ impl<'a> FmmTree<'a> {
     pub fn inherit_potential(&self) {
         if self.is_leaf() {
             local_to_particle(
-                self.external_potential,
+                &self.external_potential.borrow(),
                 self.system.center,
-                self.system.bodies,
-                accelerations,
+                &self.system.bodies,
+                &mut self.acceleration.borrow_mut(),
             );
         } else {
             for child in self.children.iter() {
