@@ -17,7 +17,7 @@ pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic 
     return mp_shifted;
 }
 
-fn shift_scale_harmonics(order: usize, shift: Vec3) -> Vec<Complex> {
+pub(crate) fn shift_scale_harmonics(order: usize, shift: Vec3) -> Vec<Complex> {
     let shift_size: f64 = shift.map(|dim| dim.powi(2)).iter().sum::<f64>().sqrt();
     if shift_size == 0.0 {
         let mut h: Vec<Complex> = harmonics(shift, order);
@@ -89,7 +89,7 @@ fn sigma(k: i64) -> f64 {
     }
 }
 
-fn epsilon(m: i64, mu: i64) -> f64 {
+pub(crate) fn epsilon(m: i64, mu: i64) -> f64 {
     sigma(m) * sigma(mu) * sigma(m - mu)
 }
 

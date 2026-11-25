@@ -3,7 +3,8 @@ use std::cell::RefCell;
 
 use crate::fmm::harmonic::SolidHarmonic;
 use crate::fmm::operators::{
-    multipole_to_local, multipole_to_multipole, particle_to_multipole, particle_to_particle,
+    local_to_local, local_to_particle, multipole_to_local, multipole_to_multipole,
+    particle_to_multipole, particle_to_particle,
 };
 use crate::shared::{System, Vec3};
 
@@ -75,7 +76,6 @@ impl<'a> FmmTree<'a> {
 
     pub fn assemble_potential(&self) {
         self.interact(self);
-        todo!()
     }
     fn interact(&self, source: &FmmTree) {
         if well_separated(&self.system, &source.system) {
@@ -105,6 +105,23 @@ impl<'a> FmmTree<'a> {
         } else {
             for child in source.children.iter() {
                 self.interact(child);
+            }
+        }
+    }
+    pub fn inherit_potential(&self) {
+        if self.is_leaf() {
+            local_to_particle(
+                self.external_potential,
+                self.system.center,
+                self.system.bodies,
+                accelerations,
+            );
+        } else {
+            for child in self.children.iter() {
+                let shift: Vec3 = from_fn(|i| child.system.center[i] - self.system.center[i]);
+                *child.external_potential.borrow_mut() +=
+                    &local_to_local(&self.external_potential.borrow(), shift);
+                child.inherit_potential();
             }
         }
     }

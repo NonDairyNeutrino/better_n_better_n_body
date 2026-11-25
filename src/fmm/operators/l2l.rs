@@ -1,8 +1,48 @@
-use crate::fmm::harmonic::SolidHarmonic;
+use crate::fmm::complex::Complex;
+use crate::fmm::harmonic::{SolidHarmonic, to_index};
+use crate::fmm::operators::m2m::{binomial, epsilon, shift_scale_harmonics};
 use crate::shared::Vec3;
 
 pub fn local_to_local(local: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
-    todo!()
+    if let SolidHarmonic::Irregular(_) = local {
+        panic!("L2L requires regular harmonic as input")
+    }
+
+    let p = local.order();
+    let table: Vec<Complex> = shift_scale_harmonics(p, shift);
+    let mut res: SolidHarmonic = SolidHarmonic::regular(p);
+    let coeffs: &mut [Complex] = res.coeffs_mut();
+
+    for j in 0..=p {
+        let ji: i64 = j as i64;
+        for k in -ji..=ji {
+            let idx: usize = to_index(ji, k);
+            coeffs[idx] = local_coefficient(local, &table, ji, k);
+        }
+    }
+    return res;
+}
+
+fn local_coefficient(local: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -> Complex {
+    let mut sum: Complex = Complex::zero();
+    let p: i64 = local.order() as i64;
+    for lambda in 0..=(p - j) {
+        let li = lambda as i64;
+        for mu in -li..=li {
+            let n = j + li;
+            let m = k + mu;
+            let coeffs: &[Complex] = local.coeffs();
+            sum += table[to_index(li, mu)] * coeffs[to_index(n, m)] * weight(n, m, li, mu);
+        }
+    }
+    return sum;
+}
+
+fn weight(n: i64, m: i64, lambda: i64, mu: i64) -> f64 {
+    let ep: f64 = epsilon(m, mu);
+    let binp: f64 = binomial(n + m, lambda + mu);
+    let binm: f64 = binomial(n - m, lambda - mu);
+    return ep * (binp * binm).sqrt();
 }
 
 #[cfg(test)]
@@ -266,7 +306,12 @@ mod tests {
             let from_child = inherited.value(off);
 
             // Same field: shifting loses nothing.
-            assert_close(from_child, from_parent, 1e-9, &format!("same field at {x:?}"));
+            assert_close(
+                from_child,
+                from_parent,
+                1e-9,
+                &format!("same field at {x:?}"),
+            );
 
             // And it is still the true potential, up to truncation.
             let truth = direct_potential(&sources, x);
