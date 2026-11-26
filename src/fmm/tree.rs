@@ -125,6 +125,28 @@ impl<'a> FmmTree<'a> {
             }
         }
     }
+    pub fn accelerations(&self, bodies: &[Body]) -> Vec<Vec3> {
+        let mut out: Vec<Vec3> = vec![ORIGIN; bodies.len()];
+        self.collect_accelerations(bodies, &mut out);
+        return out;
+    }
+    fn collect_accelerations(&self, bodies: &[Body], out: &mut [Vec3]) {
+        if self.is_leaf() {
+            for (body, acc) in self
+                .system
+                .bodies
+                .iter()
+                .zip(self.acceleration.borrow().iter())
+            {
+                let slot = index_in(*body, bodies);
+                out[slot].iter_mut().zip(acc).for_each(|(e, a)| *e += a);
+            }
+        } else {
+            for child in self.children.iter() {
+                child.collect_accelerations(bodies, out);
+            }
+        }
+    }
 }
 
 const THETA: f64 = 0.5;
