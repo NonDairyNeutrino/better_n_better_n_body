@@ -6,7 +6,7 @@ use crate::fmm::operators::{
     local_to_local, local_to_particle, multipole_to_local, multipole_to_multipole,
     particle_to_multipole, particle_to_particle,
 };
-use crate::shared::{System, Vec3};
+use crate::shared::{Body, ORIGIN, System, Vec3};
 
 const MAX_LEAF_BODIES: usize = 2;
 pub struct FmmTree<'a> {
@@ -137,6 +137,18 @@ fn well_separated(target: &System, source: &System) -> bool {
         .sum::<f64>();
 
     3.0_f64 * (target.hw + source.hw).powi(2) < THETA.powi(2) * dist2
+}
+
+fn index_in(body: &Body, bodies: &[Body]) -> usize {
+    let body_addr: usize = std::ptr::from_ref(body).addr();
+    let start_addr: usize = bodies.as_ptr().addr();
+    let offset: usize = body_addr
+        .checked_sub(start_addr)
+        .expect("Body comes before slice");
+    let index = offset / size_of::<Body>();
+
+    assert!(index < bodies.len());
+    return index;
 }
 
 #[cfg(test)]
