@@ -18,15 +18,22 @@ fn main() {
     println!("Simulating {NBODIES} bodies");
 
     // direct simulation
-    let start_direct: Instant = Instant::now();
+    let mut start: Instant = Instant::now();
     direct::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME);
-    println!("direct time: {:?}", Instant::now() - start_direct);
+    println!("direct time: {:?}", Instant::now() - start);
 
     // Barnes-Hut
     for resolution in [0.4_f64, 0.6, 0.8, 1.0] {
         println!("Simulating using Barnes-Hut with cell limit theta = {resolution}");
-        let start_bh: Instant = Instant::now();
+        start = Instant::now();
         barnes_hut::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME, resolution);
-        println!("Barnes-Hut time: {:?}", Instant::now() - start_bh)
+        println!("Barnes-Hut time: {:?}", Instant::now() - start)
     }
+
+    // Fast-Multipole Method
+    println!("Simulating using Fast Multipole Method");
+    let order: usize = 4;
+    let start: Instant = Instant::now();
+    fmm::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME, order);
+    println!("Barnes-Hut time: {:?}", Instant::now() - start)
 }
