@@ -18,16 +18,20 @@ pub struct FmmTree<'a> {
 }
 impl<'a> FmmTree<'a> {
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
+        FmmTree::with_leaf_limit(system, p, MAX_LEAF_BODIES)
+    }
+    /// Like `new`, but a cell is split only when it holds more than `leaf_limit` bodies.
+    pub fn with_leaf_limit(system: System<'a>, p: usize, leaf_limit: usize) -> FmmTree<'a> {
         let mass_distribution: SolidHarmonic = SolidHarmonic::irregular(p);
         let external_potential: RefCell<SolidHarmonic> = RefCell::new(SolidHarmonic::regular(p));
 
-        if MAX_LEAF_BODIES < system.bodies.len() {
+        if leaf_limit < system.bodies.len() {
             // split
             let new_system: System<'_> = System::new(system.center, system.hw);
             let mut children: Vec<FmmTree<'a>> = Vec::with_capacity(8);
             let systems: [System; 8] = system.partition();
             for child in systems {
-                let child_tree: FmmTree = FmmTree::new(child, p);
+                let child_tree: FmmTree = FmmTree::with_leaf_limit(child, p, leaf_limit);
                 children.push(child_tree);
             }
             let acceleration: RefCell<Vec<[f64; 3]>> = RefCell::new(Vec::new());
@@ -217,7 +221,18 @@ mod tests {
         out
     }
 
+    /// The leaf limit the structural tests build with. It is small so that the
+    /// small fixtures grow trees deep enough to test something; the production
+    /// limit is covered by `the_default_constructor_uses_the_production_limit`
+    /// and by the tests at the end of this module.
+    const TEST_LEAF: usize = 2;
+
     fn tree_of(bodies: &[Body], p: usize) -> FmmTree<'_> {
+        FmmTree::with_leaf_limit(System::from_bodies(bodies), p, TEST_LEAF)
+    }
+
+    /// A tree built the way the program builds it.
+    fn production_tree_of(bodies: &[Body], p: usize) -> FmmTree<'_> {
         FmmTree::new(System::from_bodies(bodies), p)
     }
 
@@ -289,7 +304,7 @@ mod tests {
 
     #[test]
     fn an_empty_system_is_an_empty_leaf() {
-        let tree = FmmTree::new(System::new(ORIGIN, 1.0), 2);
+        let tree = FmmTree::with_leaf_limit(System::new(ORIGIN, 1.0), 2, TEST_LEAF);
         assert!(tree.children.is_empty());
         assert!(tree.system.bodies.is_empty());
     }
@@ -304,15 +319,15 @@ mod tests {
 
     #[test]
     fn a_system_at_the_limit_is_one_leaf_holding_every_body() {
-        let bodies = random_bodies(2, MAX_LEAF_BODIES);
+        let bodies = random_bodies(2, TEST_LEAF);
         let tree = tree_of(&bodies, 2);
         assert!(tree.children.is_empty(), "exactly the limit must not split");
-        assert_eq!(tree.system.bodies.len(), MAX_LEAF_BODIES);
+        assert_eq!(tree.system.bodies.len(), TEST_LEAF);
     }
 
     #[test]
     fn one_body_over_the_limit_splits() {
-        let bodies = random_bodies(3, MAX_LEAF_BODIES + 1);
+        let bodies = random_bodies(3, TEST_LEAF + 1);
         let tree = tree_of(&bodies, 2);
         assert_eq!(tree.children.len(), 8);
     }
@@ -361,12 +376,12 @@ mod tests {
         for (name, bodies) in fixtures() {
             for leaf in leaves(&tree_of(&bodies, 2)) {
                 let n = leaf.system.bodies.len();
-                assert!(n <= MAX_LEAF_BODIES, "{name}: a leaf holds {n}");
+                assert!(n <= TEST_LEAF, "{name}: a leaf holds {n}");
                 biggest = biggest.max(n);
             }
         }
         assert_eq!(
-            biggest, MAX_LEAF_BODIES,
+            biggest, TEST_LEAF,
             "the limit is never reached: a vacuous check"
         );
     }
@@ -427,7 +442,7 @@ mod tests {
         let bodies = random_bodies(6, 50);
         let system = System::from_bodies(&bodies);
         let (center, hw) = (system.center, system.hw);
-        let tree = FmmTree::new(system, 2);
+        let tree = FmmTree::with_leaf_limit(system, 2, TEST_LEAF);
         assert!(close3(tree.system.center, center));
         assert!(close(tree.system.hw, hw));
     }
@@ -679,7 +694,7 @@ mod tests {
                     internal_checked += 1;
                 }
             }
-            if bodies.len() > MAX_LEAF_BODIES {
+            if bodies.len() > TEST_LEAF {
                 assert!(internal_checked > 0, "{name}: no internal node was checked");
             }
         }
@@ -703,7 +718,7 @@ mod tests {
                 .map(|n| n.mass_distribution.clone())
                 .collect();
             assert_eq!(once, twice, "{name}");
-            if bodies.len() > MAX_LEAF_BODIES {
+            if bodies.len() > TEST_LEAF {
                 let internal_with_mass = all_nodes(&tree)
                     .iter()
                     .filter(|n| !n.is_leaf() && n.mass_distribution.get(0, 0).re > 0.0)
@@ -962,5 +977,329 @@ mod tests {
             }
             assert!(nonzero_bodies > 0, "{name}: no body has a near pull");
         }
+    }
+
+    #[test]
+    fn the_default_constructor_uses_the_production_limit() {
+        let at_limit = random_bodies(20, MAX_LEAF_BODIES);
+        assert!(production_tree_of(&at_limit, 2).is_leaf());
+        let over = random_bodies(21, MAX_LEAF_BODIES + 1);
+        assert!(!production_tree_of(&over, 2).is_leaf());
+    }
+
+    #[test]
+    fn a_larger_limit_gives_a_shallower_tree_and_a_smaller_one_a_deeper_tree() {
+        let bodies = random_bodies(22, 300);
+        let at = |limit: usize| {
+            depth(&FmmTree::with_leaf_limit(
+                System::from_bodies(&bodies),
+                1,
+                limit,
+            ))
+        };
+        assert!(at(2) > at(20));
+        assert!(at(20) > at(150));
+        assert_eq!(at(300), 0, "everything fits in one leaf");
+    }
+
+    // ============================================================ index_in
+
+    #[test]
+    fn index_in_finds_every_bodys_own_slot() {
+        let bodies = random_bodies(1, 40);
+        for k in 0..bodies.len() {
+            assert_eq!(index_in(&bodies[k], &bodies), k, "body {k}");
+        }
+    }
+
+    #[test]
+    fn index_in_counts_from_the_start_of_the_slice_it_is_given() {
+        let bodies = random_bodies(2, 10);
+        assert_eq!(index_in(&bodies[7], &bodies[5..]), 2);
+        assert_eq!(index_in(&bodies[5], &bodies[5..]), 0);
+        assert_eq!(index_in(&bodies[9], &bodies[5..]), 4);
+    }
+
+    #[test]
+    #[should_panic(expected = "before slice")]
+    fn index_in_refuses_a_body_before_the_slice() {
+        let bodies = random_bodies(3, 10);
+        index_in(&bodies[2], &bodies[5..]);
+    }
+
+    #[test]
+    #[should_panic(expected = "index < bodies.len()")]
+    fn index_in_refuses_a_body_past_the_end_of_the_slice() {
+        let bodies = random_bodies(4, 10);
+        index_in(&bodies[9], &bodies[..5]);
+    }
+
+    // ======================================================= well_separated
+
+    // Cells of half-width a and b count as far apart when
+    //   3 (a + b)^2 < THETA^2 * distance^2,
+    // that is, when the distance exceeds sqrt(3) (a + b) / THETA. With THETA = 0.5
+    // that is 6.93 for two unit cells and 5.20 for half-widths 1 and 0.5.
+
+    fn cell(x: f64, y: f64, z: f64, hw: f64) -> System<'static> {
+        System::new([x, y, z], hw)
+    }
+
+    #[test]
+    fn two_unit_cells_are_far_just_beyond_the_threshold_and_near_just_inside_it() {
+        let a = cell(0.0, 0.0, 0.0, 1.0);
+        assert!(!well_separated(&a, &cell(6.9, 0.0, 0.0, 1.0)));
+        assert!(well_separated(&a, &cell(7.0, 0.0, 0.0, 1.0)));
+    }
+
+    #[test]
+    fn the_threshold_scales_with_the_sum_of_the_half_widths_not_their_squares() {
+        let a = cell(0.0, 0.0, 0.0, 1.0);
+        // threshold sqrt(3) * 1.5 / 0.5 = 5.196
+        assert!(!well_separated(&a, &cell(5.1, 0.0, 0.0, 0.5)));
+        assert!(well_separated(&a, &cell(5.3, 0.0, 0.0, 0.5)));
+    }
+
+    #[test]
+    fn only_the_distance_between_centers_matters_not_the_direction() {
+        let a = cell(1.0, -2.0, 0.5, 1.0);
+        let along_x = cell(1.0 + 7.0, -2.0, 0.5, 1.0);
+        let diagonal = cell(
+            1.0 + 7.0 / 3.0_f64.sqrt(),
+            -2.0 + 7.0 / 3.0_f64.sqrt(),
+            0.5 + 7.0 / 3.0_f64.sqrt(),
+            1.0,
+        );
+        assert!(well_separated(&a, &along_x));
+        assert!(well_separated(&a, &diagonal));
+        let near_diagonal = cell(
+            1.0 + 6.9 / 3.0_f64.sqrt(),
+            -2.0 + 6.9 / 3.0_f64.sqrt(),
+            0.5 + 6.9 / 3.0_f64.sqrt(),
+            1.0,
+        );
+        assert!(!well_separated(&a, &near_diagonal));
+    }
+
+    #[test]
+    fn well_separated_is_symmetric() {
+        let a = cell(0.0, 0.0, 0.0, 1.0);
+        for (x, hw) in [(5.1, 0.5), (5.3, 0.5), (6.9, 1.0), (7.0, 1.0), (3.0, 0.1)] {
+            let b = cell(x, 0.0, 0.0, hw);
+            assert_eq!(well_separated(&a, &b), well_separated(&b, &a), "x = {x}");
+        }
+    }
+
+    #[test]
+    fn a_cell_is_never_well_separated_from_itself() {
+        let a = cell(0.3, 0.2, -0.1, 0.5);
+        assert!(!well_separated(&a, &cell(0.3, 0.2, -0.1, 0.5)));
+    }
+
+    // ===================================================== accelerations
+
+    #[test]
+    fn accelerations_puts_each_leaf_slot_at_its_bodys_original_index() {
+        // Tag each leaf slot with the body's original index, then read back.
+        // No physics is involved, so this only tests the bookkeeping.
+        let bodies = random_bodies(5, 600);
+        let tree = production_tree_of(&bodies, 1);
+        assert!(
+            leaves(&tree).len() > 1,
+            "need several leaves to mean anything"
+        );
+
+        for leaf in leaves(&tree) {
+            let mut slots = leaf.acceleration.borrow_mut();
+            for (body, slot) in leaf.system.bodies.iter().zip(slots.iter_mut()) {
+                let i = index_in(body, &bodies) as f64;
+                *slot = [i, 2.0 * i, -i];
+            }
+        }
+
+        let got = tree.accelerations(&bodies);
+        assert_eq!(got.len(), bodies.len());
+        for (i, acc) in got.iter().enumerate() {
+            let i = i as f64;
+            assert_eq!(*acc, [i, 2.0 * i, -i], "body {i}");
+        }
+    }
+
+    #[test]
+    fn accelerations_of_an_untouched_tree_are_all_zero() {
+        let bodies = random_bodies(6, 300);
+        let tree = production_tree_of(&bodies, 1);
+        let got = tree.accelerations(&bodies);
+        assert_eq!(got, vec![[0.0; 3]; bodies.len()]);
+    }
+
+    #[test]
+    fn accelerations_does_not_change_the_tree() {
+        let bodies = random_bodies(7, 300);
+        let tree = production_tree_of(&bodies, 1);
+        for leaf in leaves(&tree) {
+            for slot in leaf.acceleration.borrow_mut().iter_mut() {
+                *slot = [1.0, 2.0, 3.0];
+            }
+        }
+        let first = tree.accelerations(&bodies);
+        let second = tree.accelerations(&bodies);
+        assert_eq!(first, second);
+    }
+
+    // =================================================== inherit_potential
+
+    use crate::fmm::complex::Complex;
+    use crate::fmm::harmonic::to_index;
+    use crate::fmm::test_util::distinct;
+
+    fn field(p: usize, offset: f64) -> SolidHarmonic {
+        let mut l = SolidHarmonic::regular(p);
+        for (k, c) in l.coeffs_mut().iter_mut().enumerate() {
+            *c = distinct(k, offset);
+        }
+        l
+    }
+
+    fn max_diff(a: &SolidHarmonic, b: &SolidHarmonic) -> f64 {
+        a.coeffs()
+            .iter()
+            .zip(b.coeffs())
+            .map(|(x, y)| (x.re - y.re).abs().max((x.im - y.im).abs()))
+            .fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn every_node_ends_up_with_its_own_field_plus_its_parents_shifted_to_it() {
+        let p = 3;
+        let bodies = random_bodies(8, 700);
+        let tree = production_tree_of(&bodies, p);
+        let nodes = all_nodes(&tree);
+        assert!(
+            depth(&tree) >= 2,
+            "need at least two levels to test inheriting twice"
+        );
+
+        // Give every node its own distinct field first, then inherit.
+        let own: Vec<SolidHarmonic> = (0..nodes.len()).map(|k| field(p, 0.1 * k as f64)).collect();
+        for (node, f) in nodes.iter().zip(&own) {
+            *node.external_potential.borrow_mut() = f.clone();
+        }
+        tree.inherit_potential();
+
+        let slot_of = |n: &FmmTree| nodes.iter().position(|m| std::ptr::eq(*m, n)).unwrap();
+        for parent in &nodes {
+            for child in &parent.children {
+                let shift: Vec3 = from_fn(|i| child.system.center[i] - parent.system.center[i]);
+                let mut want = own[slot_of(child)].clone();
+                want += &local_to_local(&parent.external_potential.borrow(), shift);
+                let got = child.external_potential.borrow();
+                assert!(
+                    max_diff(&got, &want) < 1e-9,
+                    "child {} of parent {}",
+                    slot_of(child),
+                    slot_of(parent)
+                );
+            }
+        }
+        // the root has nobody above it, so it is unchanged
+        assert!(max_diff(&tree.external_potential.borrow(), &own[0]) == 0.0);
+    }
+
+    #[test]
+    fn a_children_inherit_from_the_already_updated_parent_not_the_stale_one() {
+        // Only the root has a field. If a grandchild read its parent before the
+        // parent had inherited, it would get nothing.
+        let p = 2;
+        let bodies = random_bodies(9, 700);
+        let tree = production_tree_of(&bodies, p);
+        assert!(depth(&tree) >= 2);
+        *tree.external_potential.borrow_mut() = field(p, 0.4);
+        tree.inherit_potential();
+
+        for leaf in leaves(&tree) {
+            let f = leaf.external_potential.borrow();
+            assert!(
+                f.coeffs().iter().any(|c| c.re != 0.0 || c.im != 0.0),
+                "a leaf at depth below the root got nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn leaves_read_their_field_into_the_accelerations_they_already_hold() {
+        // A field of c * z about the root has slope c along z everywhere, and
+        // shifting its center cannot change that. So every body, in every leaf,
+        // must gain exactly (0, 0, c), on top of whatever its slot already held.
+        let p = 2;
+        let c = 0.35;
+        let bodies = random_bodies(10, 700);
+        let tree = production_tree_of(&bodies, p);
+        let mut linear = SolidHarmonic::regular(p);
+        linear.coeffs_mut()[to_index(1, 0)] = Complex { re: c, im: 0.0 };
+        *tree.external_potential.borrow_mut() = linear;
+        for leaf in leaves(&tree) {
+            for slot in leaf.acceleration.borrow_mut().iter_mut() {
+                *slot = [1.0, 2.0, 3.0];
+            }
+        }
+
+        tree.inherit_potential();
+
+        let mut seen = 0;
+        for leaf in leaves(&tree) {
+            for slot in leaf.acceleration.borrow().iter() {
+                assert!((slot[0] - 1.0).abs() < 1e-9, "x: {slot:?}");
+                assert!((slot[1] - 2.0).abs() < 1e-9, "y: {slot:?}");
+                assert!(
+                    (slot[2] - (3.0 + crate::shared::G * c)).abs() < 1e-9,
+                    "z: {slot:?}"
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, bodies.len());
+    }
+
+    #[test]
+    fn inheriting_with_no_field_anywhere_leaves_the_accelerations_alone() {
+        let bodies = random_bodies(11, 300);
+        let tree = production_tree_of(&bodies, 2);
+        tree.inherit_potential();
+        assert_eq!(tree.accelerations(&bodies), vec![[0.0; 3]; bodies.len()]);
+    }
+
+    #[test]
+    fn a_quadratic_field_at_the_root_pulls_every_body_in_proportion_to_its_offset_from_the_root() {
+        // The field u (z^2 - (x^2 + y^2)/2) about the root has slope
+        // u (-dx, -dy, 2 dz) at offset d from the root, however many levels of
+        // inheriting lie between the root and the leaf. This follows the field
+        // down the whole tree to a closed-form answer.
+        let p = 3;
+        let u = 0.8;
+        let bodies = random_bodies(12, 700);
+        let tree = production_tree_of(&bodies, p);
+        assert!(depth(&tree) >= 2);
+        let mut quadratic = SolidHarmonic::regular(p);
+        quadratic.coeffs_mut()[to_index(2, 0)] = Complex { re: u, im: 0.0 };
+        *tree.external_potential.borrow_mut() = quadratic;
+
+        tree.inherit_potential();
+
+        let got = tree.accelerations(&bodies);
+        let mut biggest: f64 = 0.0;
+        for (body, acc) in bodies.iter().zip(&got) {
+            let d: Vec3 = from_fn(|i| body.pos[i] - tree.system.center[i]);
+            let want = [-u * d[0], -u * d[1], 2.0 * u * d[2]];
+            for i in 0..3 {
+                assert!(
+                    (acc[i] - crate::shared::G * want[i]).abs() < 1e-9,
+                    "body at {:?}: got {acc:?}, want {want:?}",
+                    body.pos
+                );
+            }
+            biggest = biggest.max(want.iter().fold(0.0, |m: f64, c| m.max(c.abs())));
+        }
+        assert!(biggest > 0.1, "fixture too weak to mean anything");
     }
 }
