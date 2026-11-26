@@ -8,7 +8,7 @@ use crate::fmm::operators::{
 };
 use crate::shared::{Body, ORIGIN, System, Vec3};
 
-const MAX_LEAF_BODIES: usize = 2;
+const MAX_LEAF_BODIES: usize = 64;
 pub struct FmmTree<'a> {
     system: System<'a>,
     mass_distribution: SolidHarmonic, // the mass distribution in the cell as moments

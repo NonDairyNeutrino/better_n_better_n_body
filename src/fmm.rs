@@ -24,7 +24,8 @@ fn simulate_step(bodies: &mut [Body], time_step: f64, p: usize) {
 
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64, p: usize) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
-    for _ in 0..nsteps {
+    for step in 0..nsteps {
+        eprint!("simulating step {step}/{nsteps}\r");
         simulate_step(system, time_step, p);
     }
 }

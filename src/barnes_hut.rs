@@ -35,7 +35,8 @@ fn simulate_step(bodies: &mut [Body], dt: f64, resolution: f64) {
 /// - units are nondimensionalized (G = 1).
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64, resolution: f64) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
-    for _ in 0..nsteps {
+    for step in 0..nsteps {
+        eprint!("simulating step {step}/{nsteps}\r");
         simulate_step(system, time_step, resolution);
     }
 }
