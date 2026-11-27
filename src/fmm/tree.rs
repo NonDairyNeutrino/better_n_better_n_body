@@ -844,7 +844,7 @@ mod tests {
             let p = 4;
             let mut tree = tree_of(&bodies, p);
             tree.accumulate_mass_distribution();
-            tree.interact(&tree);
+            tree.interact(&tree, &M2LScalings::new(p));
             let (far, _) = expected_pairs(&tree);
             let mut nonzero_nodes = 0;
             for node in all_nodes(&tree) {
@@ -852,7 +852,7 @@ mod tests {
                 for (t, s) in &far {
                     if std::ptr::eq(*t, node) {
                         let shift: Vec3 = from_fn(|i| t.system.center[i] - s.system.center[i]);
-                        want += &multipole_to_local(&s.mass_distribution, shift);
+                        want += &multipole_to_local(&s.mass_distribution, shift, &M2LScalings::new(p));
                     }
                 }
                 let got = node.external_potential.borrow();
@@ -892,7 +892,7 @@ mod tests {
             let p = 6;
             let mut tree = tree_of(&bodies, p);
             tree.accumulate_mass_distribution();
-            tree.interact(&tree);
+            tree.interact(&tree, &M2LScalings::new(p));
             let (_, near) = expected_pairs(&tree);
             let mut worst: f64 = 0.0;
             let mut leaves_with_far_part = 0;
@@ -937,7 +937,7 @@ mod tests {
         for (name, bodies) in interaction_fixtures() {
             let mut tree = tree_of(&bodies, 2);
             tree.accumulate_mass_distribution();
-            tree.interact(&tree);
+            tree.interact(&tree, &M2LScalings::new(2));
             let (_, near) = expected_pairs(&tree);
             let mut nonzero_bodies = 0;
             for node in all_nodes(&tree) {

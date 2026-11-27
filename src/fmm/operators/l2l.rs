@@ -50,6 +50,7 @@ mod tests {
     use super::*;
     use crate::fmm::complex::Complex;
     use crate::fmm::harmonic::to_index;
+    use crate::fmm::operators::m2l::M2LScalings;
     use crate::fmm::operators::{multipole_to_local, particle_to_multipole};
     use crate::fmm::test_util::{assert_close, bodies_around, direct_potential, distinct};
 
@@ -289,7 +290,7 @@ mod tests {
         let mp = particle_to_multipole(sources.iter(), source_center, p);
 
         let parent: Vec3 = [0.0, 0.0, 0.0];
-        let local = multipole_to_local(&mp, sub(parent, source_center));
+        let local = multipole_to_local(&mp, sub(parent, source_center), &M2LScalings::new(p));
 
         let child: Vec3 = [0.5, 0.5, -0.5];
         let inherited = local_to_local(&local, sub(child, parent));

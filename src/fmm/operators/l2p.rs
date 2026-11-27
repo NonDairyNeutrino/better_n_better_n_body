@@ -44,6 +44,7 @@ pub fn local_to_particle(local: &SolidHarmonic, center: Vec3, bodies: &[&Body], 
 mod tests {
     use super::*;
     use crate::fmm::harmonic::to_index;
+    use crate::fmm::operators::m2l::M2LScalings;
     use crate::fmm::operators::{multipole_to_local, particle_to_multipole};
     use crate::fmm::test_util::{bodies_around, pull_from};
 
@@ -266,7 +267,7 @@ mod tests {
         let mp = particle_to_multipole(sources.iter(), source_center, p);
 
         let leaf_center: Vec3 = [0.0, 0.0, 0.0];
-        let field = multipole_to_local(&mp, [-10.0, 0.0, 0.0]);
+        let field = multipole_to_local(&mp, [-10.0, 0.0, 0.0], &M2LScalings::new(p));
 
         let targets = bodies_around(leaf_center, 0.5, 5, 9);
         let refs: Vec<&Body> = targets.iter().collect();

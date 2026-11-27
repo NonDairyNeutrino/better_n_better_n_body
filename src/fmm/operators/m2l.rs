@@ -1,8 +1,9 @@
+#[cfg(test)]
+use crate::fmm::operators::m2m::binomial;
 use crate::{
     fmm::{
         complex::Complex,
         harmonic::{SolidHarmonic, from_index, harmonics, to_index},
-        operators::m2m::binomial,
     },
     shared::Vec3,
 };
@@ -64,59 +65,6 @@ fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
         .collect();
 }
 
-fn convert_moments(mp: &SolidHarmonic, local: &mut SolidHarmonic, table: &[Complex]) {
-    for j in 0..=local.order() {
-        let ji: i64 = j as i64;
-
-        for k in -ji..=ji {
-            let idx: usize = to_index(ji, k);
-            let slot: &mut Complex = &mut local.coeffs_mut()[idx];
-            *slot += get_local_coefficient(mp, table, ji, k);
-        }
-    }
-}
-
-fn get_local_coefficient(mp: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -> Complex {
-    let mut acc: Complex = Complex::zero();
-    for n in 0..=(mp.order() as i64) {
-        for m in -n..=n {
-            let factor: f64 = conversion_sign(j, k, m) * get_conversion_factor(n, m, j, k);
-            let h: Complex = get_conversion_direction(mp, table, n, m, j, k);
-            acc += h * factor;
-        }
-    }
-    return acc;
-}
-
-fn get_conversion_direction(
-    mp: &SolidHarmonic,
-    table: &[Complex],
-    n: i64,
-    m: i64,
-    j: i64,
-    k: i64,
-) -> Complex {
-    let tabulated: Complex = table[to_index(j + n, m - k)];
-    let moment: Complex = mp.get(n, m);
-    return tabulated * moment;
-}
-
-fn get_conversion_factor(n: i64, m: i64, j: i64, k: i64) -> f64 {
-    let bin1: f64 = binomial(n + j + m - k, n + m);
-    let bin2: f64 = binomial(n + j - m + k, n - m);
-    return (bin1 * bin2).sqrt();
-}
-
-fn conversion_sign(j: i64, k: i64, m: i64) -> f64 {
-    let signj: f64 = (-1.0_f64).powi(j as i32);
-    let signkm: f64 = if k.signum() == m.signum() {
-        (-1.0_f64).powi(k.abs().min(m.abs()) as i32)
-    } else {
-        1.0_f64
-    };
-    return signj * signkm;
-}
-
 pub struct M2LScalings {
     order: usize,
     source: Vec<f64>,
@@ -126,10 +74,12 @@ pub struct M2LScalings {
 impl M2LScalings {
     pub fn new(order: usize) -> M2LScalings {
         // build factorials because there's not a function for it???
-        let fact: Vec<f64> = Vec::from_fn(4 * order + 1, |i| (0..=i).product::<usize>() as f64);
+        let fact: Vec<f64> = (0..=4 * order)
+            .map(|i| (1..=i).map(|x| x as f64).product::<f64>())
+            .collect();
 
         // build source weights
-        let mut source: Vec<f64> = Vec::with_capacity((order + 1).pow(2));
+        let mut source: Vec<f64> = vec![0.0; (order + 1).pow(2)];
         for n in 0..=order {
             let ni: i64 = n as i64;
             for m in -ni..=ni {
@@ -140,7 +90,7 @@ impl M2LScalings {
         }
 
         // build table
-        let mut table: Vec<f64> = Vec::with_capacity((2 * order + 1).pow(2));
+        let mut table: Vec<f64> = vec![0.0; (2 * order + 1).pow(2)];
         for n in 0..=(2 * order) {
             let ni: i64 = n as i64;
             for m in -ni..=ni {
@@ -151,7 +101,7 @@ impl M2LScalings {
         }
 
         // build output weights
-        let mut output: Vec<f64> = Vec::with_capacity((order + 1).pow(2));
+        let mut output: Vec<f64> = vec![0.0; (order + 1).pow(2)];
         for j in 0..=order {
             let ji: i64 = j as i64;
             for k in -ji..=ji {
@@ -176,6 +126,66 @@ fn sgn(k: i64, m: i64) -> i64 {
     } else {
         return 1;
     }
+}
+
+// The term-by-term conversion below is the original implementation. It is kept
+// as the reference that the factorized `multipole_to_local` is tested against.
+#[cfg(test)]
+fn convert_moments(mp: &SolidHarmonic, local: &mut SolidHarmonic, table: &[Complex]) {
+    for j in 0..=local.order() {
+        let ji: i64 = j as i64;
+
+        for k in -ji..=ji {
+            let idx: usize = to_index(ji, k);
+            let slot: &mut Complex = &mut local.coeffs_mut()[idx];
+            *slot += get_local_coefficient(mp, table, ji, k);
+        }
+    }
+}
+
+#[cfg(test)]
+fn get_local_coefficient(mp: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -> Complex {
+    let mut acc: Complex = Complex::zero();
+    for n in 0..=(mp.order() as i64) {
+        for m in -n..=n {
+            let factor: f64 = conversion_sign(j, k, m) * get_conversion_factor(n, m, j, k);
+            let h: Complex = get_conversion_direction(mp, table, n, m, j, k);
+            acc += h * factor;
+        }
+    }
+    return acc;
+}
+
+#[cfg(test)]
+fn get_conversion_direction(
+    mp: &SolidHarmonic,
+    table: &[Complex],
+    n: i64,
+    m: i64,
+    j: i64,
+    k: i64,
+) -> Complex {
+    let tabulated: Complex = table[to_index(j + n, m - k)];
+    let moment: Complex = mp.get(n, m);
+    return tabulated * moment;
+}
+
+#[cfg(test)]
+fn get_conversion_factor(n: i64, m: i64, j: i64, k: i64) -> f64 {
+    let bin1: f64 = binomial(n + j + m - k, n + m);
+    let bin2: f64 = binomial(n + j - m + k, n - m);
+    return (bin1 * bin2).sqrt();
+}
+
+#[cfg(test)]
+fn conversion_sign(j: i64, k: i64, m: i64) -> f64 {
+    let signj: f64 = (-1.0_f64).powi(j as i32);
+    let signkm: f64 = if k.signum() == m.signum() {
+        (-1.0_f64).powi(k.abs().min(m.abs()) as i32)
+    } else {
+        1.0_f64
+    };
+    return signj * signkm;
 }
 
 #[cfg(test)]
@@ -504,7 +514,11 @@ mod tests {
     #[test]
     fn the_result_is_regular_and_has_the_order_of_the_input() {
         for p in 0..=3 {
-            let local = multipole_to_local(&distinct_moments(p, 1.0), [3.0, -2.0, 2.5]);
+            let local = multipole_to_local(
+                &distinct_moments(p, 1.0),
+                [3.0, -2.0, 2.5],
+                &M2LScalings::new(p),
+            );
             assert!(matches!(local, SolidHarmonic::Regular(_)));
             assert_eq!(local.order(), p);
         }
@@ -515,7 +529,7 @@ mod tests {
     #[test]
     fn at_order_zero_the_result_is_the_mass_over_the_distance() {
         let mp = distinct_moments(0, 3.0);
-        let local = multipole_to_local(&mp, [3.0, 4.0, 0.0]);
+        let local = multipole_to_local(&mp, [3.0, 4.0, 0.0], &M2LScalings::new(0));
         let want = mp.coeffs()[0] * (1.0 / 5.0);
         assert_close(local.coeffs()[0], want, 1e-14, "L_0^0");
     }
@@ -529,9 +543,10 @@ mod tests {
         let b = distinct_moments(4, -2.0);
         let mut sum = a.clone();
         sum += &b;
-        let mut want = multipole_to_local(&a, t);
-        want += &multipole_to_local(&b, t);
-        let got = multipole_to_local(&sum, t);
+        let scale = M2LScalings::new(4);
+        let mut want = multipole_to_local(&a, t, &scale);
+        want += &multipole_to_local(&b, t, &scale);
+        let got = multipole_to_local(&sum, t, &scale);
         for (k, (g, w)) in got.coeffs().iter().zip(want.coeffs()).enumerate() {
             assert_close(
                 *g,
@@ -566,7 +581,7 @@ mod tests {
             let mut worst_at = vec![];
             for p in [0usize, 2, 4, 6, 8] {
                 let mp = particle_to_multipole(bodies.iter(), [0.0; 3], p);
-                let local = multipole_to_local(&mp, t);
+                let local = multipole_to_local(&mp, t, &M2LScalings::new(p));
                 let mut worst: f64 = 0.0;
                 for y in points {
                     let x = [t[0] + y[0], t[1] + y[1], t[2] + y[2]];
@@ -599,12 +614,201 @@ mod tests {
     #[test]
     #[should_panic(expected = "requires irregular")]
     fn m2l_refuses_a_regular_input() {
-        multipole_to_local(&SolidHarmonic::regular(2), [3.0, 0.0, 0.0]);
+        multipole_to_local(
+            &SolidHarmonic::regular(2),
+            [3.0, 0.0, 0.0],
+            &M2LScalings::new(2),
+        );
     }
 
     #[test]
     #[should_panic(expected = "zero shift")]
     fn m2l_refuses_a_zero_shift() {
-        multipole_to_local(&SolidHarmonic::irregular(2), [0.0; 3]);
+        multipole_to_local(&SolidHarmonic::irregular(2), [0.0; 3], &M2LScalings::new(2));
+    }
+
+    // ------------------------------------------------------------ M2LScalings
+
+    // The weight of one term of the conversion used to be computed per term as
+    //   conversion_sign(j, k, m) * get_conversion_factor(n, m, j, k).
+    // It is now a product of three one-index-set factors, built once per order:
+    //   output[j,k] * sgn(k,m) * source[n,m] * table[j+n, m-k].
+    // The old functions are kept as the reference the new numbers must match.
+
+    #[test]
+    fn the_factorized_weight_equals_the_old_weight_for_every_term() {
+        for p in 0..=4usize {
+            let sc = M2LScalings::new(p);
+            for j in 0..=p as i64 {
+                for k in -j..=j {
+                    for n in 0..=p as i64 {
+                        for m in -n..=n {
+                            let new = sc.output[to_index(j, k)]
+                                * sgn(k, m) as f64
+                                * sc.source[to_index(n, m)]
+                                * sc.table[to_index(j + n, m - k)];
+                            let old = conversion_sign(j, k, m) * get_conversion_factor(n, m, j, k);
+                            assert!(
+                                (new - old).abs() <= 1e-12 * old.abs().max(1.0),
+                                "p={p} (j,k)=({j},{k}) (n,m)=({n},{m}): got {new}, want {old}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_source_scaling_matches_hand_values() {
+        // 1 / sqrt((n+m)! (n-m)!)
+        let sc = M2LScalings::new(2);
+        let s = |n: i64, m: i64| sc.source[to_index(n, m)];
+        let r2 = 2.0_f64.sqrt();
+        assert_eq!(s(0, 0), 1.0);
+        assert_eq!(s(1, 0), 1.0);
+        assert!((s(1, 1) - 1.0 / r2).abs() < 1e-15);
+        assert!((s(1, -1) - 1.0 / r2).abs() < 1e-15);
+        assert!((s(2, 0) - 0.5).abs() < 1e-15); // 1/sqrt(2! 2!)
+        assert!((s(2, 2) - 1.0 / 24.0_f64.sqrt()).abs() < 1e-15); // 1/sqrt(4! 0!)
+        assert!((s(2, -1) - 1.0 / 6.0_f64.sqrt()).abs() < 1e-15); // 1/sqrt(1! 3!)
+    }
+
+    #[test]
+    fn the_table_scaling_matches_hand_values() {
+        // sqrt((N+M)! (N-M)!), and it reaches degree 2p
+        let sc = M2LScalings::new(2);
+        let b = |n: i64, m: i64| sc.table[to_index(n, m)];
+        let r2 = 2.0_f64.sqrt();
+        assert_eq!(b(0, 0), 1.0);
+        assert_eq!(b(1, 0), 1.0);
+        assert!((b(1, 1) - r2).abs() < 1e-15);
+        assert!((b(2, 0) - 2.0).abs() < 1e-15); // sqrt(2! 2!)
+        assert!((b(2, 2) - 24.0_f64.sqrt()).abs() < 1e-15); // sqrt(4! 0!)
+        assert!((b(4, 0) - 24.0).abs() < 1e-12); // sqrt(4! 4!)
+        assert!((b(4, 4) - 40320.0_f64.sqrt()).abs() < 1e-9); // sqrt(8! 0!)
+    }
+
+    #[test]
+    fn the_output_scaling_matches_hand_values_and_carries_the_sign_of_j() {
+        // (-1)^j / sqrt((j-k)! (j+k)!)
+        let sc = M2LScalings::new(2);
+        let c = |j: i64, k: i64| sc.output[to_index(j, k)];
+        let r2 = 2.0_f64.sqrt();
+        assert_eq!(c(0, 0), 1.0);
+        assert_eq!(c(1, 0), -1.0);
+        assert!((c(1, 1) + 1.0 / r2).abs() < 1e-15);
+        assert!((c(1, -1) + 1.0 / r2).abs() < 1e-15);
+        assert!((c(2, 0) - 0.5).abs() < 1e-15);
+        assert!((c(2, 2) - 1.0 / 24.0_f64.sqrt()).abs() < 1e-15);
+    }
+
+    #[test]
+    fn the_scalings_have_the_right_lengths_and_are_all_finite_and_nonzero() {
+        for p in [0usize, 1, 2, 3, 5, 8, 12] {
+            let sc = M2LScalings::new(p);
+            assert_eq!(sc.order, p);
+            assert_eq!(sc.source.len(), (p + 1) * (p + 1), "source, p={p}");
+            assert_eq!(sc.table.len(), (2 * p + 1) * (2 * p + 1), "table, p={p}");
+            assert_eq!(sc.output.len(), (p + 1) * (p + 1), "output, p={p}");
+            for (name, v) in [
+                ("source", &sc.source),
+                ("table", &sc.table),
+                ("output", &sc.output),
+            ] {
+                assert!(
+                    v.iter().all(|x| x.is_finite() && *x != 0.0),
+                    "{name}, p={p}: a zero or non-finite entry"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_leftover_sign_matches_the_old_rule_for_every_order_pair() {
+        // conversion_sign(0, k, m) is the (k, m) part alone, since (-1)^0 = 1.
+        for k in -6..=6i64 {
+            for m in -6..=6i64 {
+                assert_eq!(sgn(k, m) as f64, conversion_sign(0, k, m), "k={k}, m={m}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_leftover_sign_is_minus_one_only_for_same_sign_pairs_with_an_odd_smaller_size() {
+        for (k, m, want) in [
+            (1, 1, -1),
+            (-1, -1, -1),
+            (1, 3, -1),
+            (-3, -1, -1),
+            (2, 2, 1),
+            (2, 3, 1),
+            (3, 3, -1),
+            (1, -1, 1),
+            (-1, 1, 1),
+            (0, 3, 1),
+            (3, 0, 1),
+            (0, 0, 1),
+        ] {
+            assert_eq!(sgn(k, m), want, "k={k}, m={m}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Scaling order")]
+    fn m2l_refuses_scalings_of_the_wrong_order() {
+        let mp = distinct_moments(2, 1.0);
+        multipole_to_local(&mp, [3.0, 0.0, 0.0], &M2LScalings::new(3));
+    }
+
+    // The factorized conversion must reproduce the original term-by-term one.
+
+    #[test]
+    fn the_factorized_conversion_equals_the_original_one() {
+        let shifts = [
+            [3.1, -2.2, 2.6],
+            [0.0, 0.0, 4.0],
+            [0.0, 0.0, -4.0],
+            [4.0, 0.0, 0.0],
+            [-3.0, 3.0, 0.0],
+            [0.5, 0.6, -0.7],
+        ];
+        for p in 0..=4usize {
+            let sc = M2LScalings::new(p);
+            let mp = distinct_moments(p, 0.7);
+            for t in shifts {
+                let table = irregular_table(p, t);
+                let mut old = SolidHarmonic::regular(p);
+                convert_moments(&mp, &mut old, &table);
+                let new = multipole_to_local(&mp, t, &sc);
+
+                let mut biggest: f64 = 0.0;
+                for (k, (g, w)) in new.coeffs().iter().zip(old.coeffs()).enumerate() {
+                    biggest = biggest.max(w.re.abs()).max(w.im.abs());
+                    let tol = 1e-11 * (1.0 + w.re.abs().max(w.im.abs()));
+                    assert!(
+                        (g.re - w.re).abs() <= tol && (g.im - w.im).abs() <= tol,
+                        "p={p} shift {t:?} slot {k}: got ({}, {}), want ({}, {})",
+                        g.re,
+                        g.im,
+                        w.re,
+                        w.im
+                    );
+                }
+                assert!(biggest > 1e-6, "p={p} {t:?}: the reference is all zeros");
+            }
+        }
+    }
+
+    #[test]
+    fn one_set_of_scalings_serves_any_number_of_conversions() {
+        // The scalings depend on the order only, never on the shift or the data.
+        let p = 3;
+        let sc = M2LScalings::new(p);
+        let a = distinct_moments(p, 1.0);
+        let first = multipole_to_local(&a, [3.0, 1.0, -2.0], &sc);
+        let _ = multipole_to_local(&distinct_moments(p, -4.0), [-5.0, 2.0, 1.0], &sc);
+        let again = multipole_to_local(&a, [3.0, 1.0, -2.0], &sc);
+        assert_eq!(first, again);
     }
 }
