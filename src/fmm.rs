@@ -1,3 +1,41 @@
+//! The Fast Multipole Method (FMM).
+//!
+//! Barnes-Hut still makes every body consult the far cells one by one. The FMM
+//! does that work once per *cell*: each cell builds the smooth field that all the
+//! distant masses create over it, and every body in the cell reads its
+//! acceleration from that field. Bodies in neighbouring cells are summed
+//! directly. The work per body stops growing with N, so a step costs O(N).
+//!
+//! # One time step
+//!
+//! The steps below are [`FmmTree`] methods, called in this order
+//! by `simulate_step`. The standard FMM name of each operator is in brackets;
+//! see [`operators`] for what each does.
+//!
+//! 1. **Build** the octree. A cell is split while it holds more than a fixed
+//!    number of bodies.
+//! 2. **Up** (`accumulate_mass_distribution`): summarize the mass in every cell,
+//!    as seen from far away. Leaves summarize their bodies
+//!    ([P2M](operators::particle_to_multipole)); parents combine their children's
+//!    summaries ([M2M](operators::multipole_to_multipole)).
+//! 3. **Across** (`assemble_potential`): one traversal over pairs of cells. Cells
+//!    that are far enough apart convert the source's summary into a field over
+//!    the target ([M2L](operators::multipole_to_local)). Near leaves sum their
+//!    bodies directly ([P2P](operators::particle_to_particle)).
+//! 4. **Down** (`inherit_potential`): each cell passes its field to its
+//!    children ([L2L](operators::local_to_local)), and each leaf reads an
+//!    acceleration for every body from its field
+//!    ([L2P](operators::local_to_particle)).
+//!
+//! # Accuracy
+//!
+//! The knob is the expansion order `p`. Every cell stores (p + 1)² coefficients
+//! per expansion; a higher order is slower and more accurate. See [`harmonic`]
+//! for what the coefficients are.
+//!
+//! For the idea in everyday terms see `src/fmm/README.md`, and for the physics
+//! in words, `src/fmm/PHYSICS.md`.
+
 mod complex;
 mod harmonic;
 mod operators;
@@ -7,6 +45,8 @@ mod tree;
 use crate::shared::{Body, System, Vec3};
 use tree::FmmTree;
 
+/// One FMM time step: build the tree, run the up / across / down passes, then
+/// move the bodies with the accelerations that come out.
 fn simulate_step(bodies: &mut [Body], time_step: f64, p: usize) {
     // calculate accelerations
     let system: System = System::from_bodies(bodies);
@@ -22,6 +62,14 @@ fn simulate_step(bodies: &mut [Body], time_step: f64, p: usize) {
     }
 }
 
+/// Advances `system` by `total_time` in steps of `time_step` using the Fast Multipole Method.
+///
+/// `p` is the expansion order. Higher is more accurate and slower. At order 0
+/// each far field is a constant, which has no gradient, so only the near-field
+/// (direct) pulls remain; use order 1 or more for a meaningful simulation.
+///
+/// The same input assumptions as [`barnes_hut::simulate`](crate::barnes_hut::simulate)
+/// apply: positive masses, and no two bodies at the same position.
 pub fn simulate(system: &mut [Body], time_step: f64, total_time: f64, p: usize) {
     let nsteps: u64 = (total_time / time_step).floor() as u64;
     for step in 0..nsteps {

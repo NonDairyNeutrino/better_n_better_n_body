@@ -1,15 +1,21 @@
 use std::array;
 
-/// This is the docstring for Object
 use crate::shared::{RNG, Vec3};
+
+/// A point mass: the thing every algorithm moves around.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Body {
+    /// Mass, in nondimensional units.
     pub mass: f64,
+    /// Position `[x, y, z]`.
     pub pos: Vec3,
+    /// Velocity `[vx, vy, vz]`.
     pub vel: Vec3,
 }
 impl Body {
-    /// Creates a new physical Object
+    /// Creates a body of mass 1 at rest at the origin.
+    ///
+    /// Handy with struct-update syntax, e.g. `Body { pos: [1.0, 0.0, 0.0], ..Body::new() }`.
     pub fn new() -> Body {
         return Body {
             pos: [0f64, 0f64, 0f64],
@@ -17,13 +23,18 @@ impl Body {
             mass: 1f64,
         };
     }
+    /// Creates a body with random mass, position and velocity.
+    ///
+    /// Each position and velocity component is uniform in `[-half_width, half_width)`.
+    /// The mass is uniform in `(0, half_width]`, so it is always positive.
+    /// The numbers are drawn from `rng` in the order mass, position, velocity.
     pub fn rand(rng: &mut RNG, half_width: f64) -> Body {
         let mass: f64 = rand_positive(rng, half_width);
         let pos: Vec3 = rand_vec3(rng, half_width);
         let vel: Vec3 = rand_vec3(rng, half_width);
         return Body { mass, pos, vel };
     }
-    /// Calculates the Euclidean distance between an object and a position
+    /// Calculates the Euclidean distance between this body and a position.
     pub fn distance(&self, pos: &Vec3) -> f64 {
         self.pos
             .iter()
@@ -32,6 +43,11 @@ impl Body {
             .sum::<f64>()
             .sqrt()
     }
+    /// Advances the body by one time step `dt` under the acceleration `acc`.
+    ///
+    /// This is symplectic (semi-implicit) Euler: the velocity is updated first,
+    /// and the position then moves with the *new* velocity. It keeps energy from
+    /// drifting as badly as plain forward Euler, at the same cost.
     pub fn accelerate(&mut self, acc: &Vec3, dt: f64) {
         // evolve via symplectic-euler
         for (i, a) in acc.iter().enumerate() {
@@ -41,9 +57,11 @@ impl Body {
     }
 }
 
+/// A random number in `(0, half_width]`. Never zero, since `rng.rand()` is below 1.
 fn rand_positive(rng: &mut RNG, half_width: f64) -> f64 {
     half_width * (1.0_f64 - rng.rand())
 }
+/// A random vector whose components are each uniform in `[-half_width, half_width)`.
 fn rand_vec3(rng: &mut RNG, half_width: f64) -> Vec3 {
     let mut r: Vec3 = array::from_fn(|_| rng.rand());
     for ri in r.iter_mut() {

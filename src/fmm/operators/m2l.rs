@@ -1,3 +1,5 @@
+//! M2L: turn a far cell's mass distribution into a field over a target cell.
+
 #[cfg(test)]
 use crate::fmm::operators::m2m::binomial;
 use crate::{
@@ -9,6 +11,22 @@ use crate::{
 };
 
 /// Turn the mass distribution of a source cell into the external potential at a target cell.
+///
+/// `mp` is the source's multipole expansion about the source center. The result
+/// is a local expansion of the same order about the *target* center, describing
+/// the potential that the source makes over the target cell. `shift` is the target
+/// center minus the source center. The expansion only converges when the cells
+/// are well separated, which the tree traversal guarantees.
+///
+/// `scale` holds weights that depend only on the order. Build it once with
+/// [`M2LScalings::new`] and reuse it for every pair of cells.
+///
+/// This is the most frequently called operator and the most expensive. Its cost
+/// grows as the fourth power of the order.
+///
+/// # Panics
+/// If `mp` is regular, if `scale` was built for a different order, or if `shift`
+/// is zero (a cell is never its own far-field source).
 pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3, scale: &M2LScalings) -> SolidHarmonic {
     if let SolidHarmonic::Regular(_) = mp {
         panic!("M2L requires irregular harmonic as input")
@@ -52,6 +70,8 @@ pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3, scale: &M2LScalings) 
     return local_potential;
 }
 
+/// `Y_n^m(shift) / |shift|^(n+1)` for every (n, m) up to degree `2 * order`.
+/// Converting an order-`p` expansion needs the table to twice the order.
 fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
     let r: f64 = shift.map(|e| e.powi(2)).iter().sum::<f64>().sqrt();
     if r == 0.0 {
@@ -65,13 +85,23 @@ fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
         .collect();
 }
 
+/// Precomputed weights for [`multipole_to_local`] at one fixed order.
+///
+/// The conversion needs factorial-based factors for the source coefficients, for
+/// the shift table, and for the result. They depend only on the order, so they
+/// are computed once here instead of for every pair of cells.
 pub struct M2LScalings {
+    /// The order these weights were built for.
     order: usize,
+    /// Weight for each source coefficient (n, m): `1 / sqrt((n+m)! (n-m)!)`.
     source: Vec<f64>,
+    /// Weight for each entry of the shift table, up to degree `2 * order`: `sqrt((n+m)! (n-m)!)`.
     table: Vec<f64>,
+    /// Weight for each result coefficient (j, k): `(-1)^j / sqrt((j+k)! (j-k)!)`.
     output: Vec<f64>,
 }
 impl M2LScalings {
+    /// Builds the weights for expansions of order `order`.
     pub fn new(order: usize) -> M2LScalings {
         // build factorials because there's not a function for it???
         let fact: Vec<f64> = (0..=4 * order)
@@ -120,6 +150,9 @@ impl M2LScalings {
     }
 }
 
+/// The sign (+1 or -1) that goes with the pair (k, m) in the conversion sum.
+/// It is -1 when `k` and `m` have the same nonzero sign and the smaller of
+/// `|k|` and `|m|` is odd.
 fn sgn(k: i64, m: i64) -> i64 {
     if 0 < k * m && k.abs().min(m.abs()).rem_euclid(2) == 1 {
         return -1;

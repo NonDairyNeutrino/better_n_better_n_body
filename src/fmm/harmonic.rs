@@ -1,31 +1,79 @@
+//! Solid harmonics: the coefficient tables the FMM stores for every cell.
+//!
+//! The potential of a cloud of masses, `Φ(x) = Σ m_j / |x - x_j|`, can be written
+//! as a series in two ways, depending on which side of the masses you are on:
+//!
+//! - an **irregular** series (a *multipole expansion*) describes the potential of
+//!   the masses *inside* a cell, valid *outside* it. Its terms fall off as
+//!   `r^-(n+1)`, so it blows up at the center. The FMM calls this a cell's *mass
+//!   distribution*.
+//! - a **regular** series (a *local expansion*) describes the potential of masses
+//!   *outside* a cell, valid *inside* it. Its terms grow as `r^n` and are finite
+//!   at the center. The FMM calls this a cell's *external potential*.
+//!
+//! Both are held as a [`SolidHarmonic`], tagged with which kind it is so that the
+//! operators can refuse to mix them up.
+//!
+//! # Layout
+//!
+//! A harmonic of order `p` stores (p + 1)² complex coefficients in one flat
+//! list, one for each pair (n, m) with `0 <= n <= p` and `-n <= m <= n`. The
+//! pair (n, m) lives at index `n² + n + m`; see [`to_index`] and [`from_index`].
+//!
+//! # Conventions
+//!
+//! The angular functions are those of [`harmonics`]: no `4π/(2n+1)` factor, and
+//! `Y_n^-m = conj(Y_n^m)` for negative `m` (which differs from the common
+//! convention by a factor `(-1)^m`). The sign bookkeeping in the shift
+//! operators exists because of this choice.
+//!
+//! Potentials leave out the factor G, as in the expansions here. G is applied
+//! when an acceleration is read off, in
+//! [`local_to_particle`](crate::fmm::operators::local_to_particle).
+
 use std::ops::AddAssign;
 
 use crate::{fmm::complex::Complex, shared::Vec3};
 
+/// A truncated series of solid harmonics, regular or irregular (see the
+/// [module docs](self)).
+///
+/// The variant says which kind of series it is; both hold the same flat list of
+/// coefficients.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SolidHarmonic {
+    /// A local expansion: the potential from outside a cell, valid inside it.
     Regular(Vec<Complex>),
+    /// A multipole expansion: the potential from inside a cell, valid outside it.
     Irregular(Vec<Complex>),
 }
 impl SolidHarmonic {
+    /// A regular harmonic of order `p` with every coefficient zero.
     pub fn regular(p: usize) -> SolidHarmonic {
         let coeffs: Vec<Complex> = vec![Complex::zero(); (p + 1).pow(2)];
         return SolidHarmonic::Regular(coeffs);
     }
+    /// An irregular harmonic of order `p` with every coefficient zero.
     pub fn irregular(p: usize) -> SolidHarmonic {
         let coeffs: Vec<Complex> = vec![Complex::zero(); (p + 1).pow(2)];
         return SolidHarmonic::Irregular(coeffs);
     }
+    /// All coefficients, in [`to_index`] order.
     pub fn coeffs(&self) -> &[Complex] {
         match self {
             SolidHarmonic::Regular(v) | SolidHarmonic::Irregular(v) => v,
         }
     }
+    /// All coefficients, in [`to_index`] order, for writing.
     pub fn coeffs_mut(&mut self) -> &mut [Complex] {
         match self {
             SolidHarmonic::Regular(v) | SolidHarmonic::Irregular(v) => v,
         }
     }
+    /// The coefficient for degree `n` and order `m`.
+    ///
+    /// # Panics
+    /// If `n < 0`, `|m| > n`, or `n` is beyond the order of this harmonic.
     pub fn get(&self, n: i64, m: i64) -> Complex {
         assert!(0 <= n, "n must be non-negative, got n={n}");
         assert!(-n <= m && m <= n, "need |m| <= n, got n={n}, m={m}");
@@ -37,13 +85,22 @@ impl SolidHarmonic {
         let coeff: Complex = self.coeffs()[idx];
         return coeff;
     }
+    /// The highest degree `n` that is stored, the `p` of the expansion.
     pub fn order(&self) -> usize {
         return self.coeffs().len().isqrt() - 1;
     }
     /// Evaluates the series at `pos`, measured from the expansion center.
     ///
-    /// Regular:   sum c_nm * r^n     * Y_nm(direction)
+    /// ```text
+    /// Regular:   sum c_nm * r^n      * Y_nm(direction)
     /// Irregular: sum c_nm * r^-(n+1) * Y_nm(direction)
+    /// ```
+    ///
+    /// For a real potential the imaginary parts of the terms cancel in the sum.
+    ///
+    /// # Panics
+    /// If an irregular harmonic is evaluated at its own center (`pos` is zero),
+    /// where it diverges.
     pub fn value(&self, pos: Vec3) -> Complex {
         let coeffs: &[Complex] = self.coeffs();
         let r: f64 = pos.iter().map(|d| d * d).sum::<f64>().sqrt();
@@ -71,6 +128,13 @@ impl SolidHarmonic {
         return val;
     }
 }
+/// Adds the coefficients of `rhs` to this harmonic.
+///
+/// Expansions about the same center add term by term, which is how the FMM
+/// accumulates the fields of many source cells.
+///
+/// # Panics
+/// If the two are not the same kind (regular or irregular) or not the same order.
 impl AddAssign<&SolidHarmonic> for SolidHarmonic {
     fn add_assign(&mut self, rhs: &SolidHarmonic) {
         assert!(
@@ -88,22 +152,39 @@ impl AddAssign<&SolidHarmonic> for SolidHarmonic {
     }
 }
 
+/// The position of the coefficient (n, m) in a flat coefficient list: `n² + n + m`.
+///
+/// Degree 0 is index 0, degree 1 is indices 1 to 3, degree 2 is indices 4 to 8,
+/// and so on, with `m` running from `-n` to `n` within each degree.
 pub fn to_index(n: i64, m: i64) -> usize {
     return (n.pow(2) + n + m) as usize;
 }
 
+/// The inverse of [`to_index`]: the (n, m) stored at flat index `idx`.
 pub fn from_index(idx: usize) -> (i64, i64) {
     let n: i64 = idx.isqrt() as i64;
     let m: i64 = (idx as i64) - n.pow(2) - n;
     return (n, m);
 }
 
-/// Y_n^m(theta, phi) for every 0 <= n <= p, |m| <= n, in `to_index` order.
-/// Depends only on the direction of `pos`, not its length; requires pos != 0.
+/// The angular functions `Y_n^m(theta, phi)` for every `0 <= n <= p`, `|m| <= n`,
+/// in [`to_index`] order, where `theta` and `phi` are the polar and azimuthal
+/// angles of the direction of `pos`.
 ///
-/// Y_n^m = Pbar_n^m(cos theta) e^{i m phi},  Y_n^-m = conj(Y_n^m), where
-/// Pbar_n^m = sqrt((n-m)!/(n+m)!) P_n^m uses the Condon-Shortley sign
-/// (-1)^m inside P_n^m. No 4pi/(2n+1) factor.
+/// They depend only on the direction of `pos`, not its length.
+///
+/// ```text
+/// Y_n^m  = Pbar_n^m(cos theta) * e^(i m phi)
+/// Y_n^-m = conj(Y_n^m)
+/// Pbar_n^m = sqrt((n-m)! / (n+m)!) * P_n^m
+/// ```
+///
+/// `P_n^m` is the associated Legendre function with the Condon-Shortley sign
+/// `(-1)^m` included. There is no `4π/(2n+1)` factor. The values are computed with
+/// recurrences in `n` and `m`.
+///
+/// `pos` must not be the zero vector: it has no direction, and the result would
+/// be NaN. Callers handle that case first.
 pub fn harmonics(pos: Vec3, p: usize) -> Vec<Complex> {
     let [x, y, z] = pos;
     let r: f64 = (x * x + y * y + z * z).sqrt();

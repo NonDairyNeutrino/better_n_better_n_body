@@ -1,3 +1,5 @@
+//! M2M: move a multipole expansion to a new center.
+
 use crate::{
     fmm::{
         complex::Complex,
@@ -6,7 +8,17 @@ use crate::{
     shared::Vec3,
 };
 
-/// Create a multipole centered at a point from the multipole centered at another point
+/// Create a multipole centered at a point from the multipole centered at another point.
+///
+/// `shift` is the old center minus the new center. The FMM uses this to fold a
+/// child's mass distribution into its parent (`shift` = child center - parent
+/// center). The result has the same order as the input. The shifted series is
+/// exact for the same mass: a coefficient of degree `n` depends only on the
+/// coefficients of degree `n` and below. A zero shift gives back the same
+/// coefficients.
+///
+/// # Panics
+/// If `mp` is regular.
 pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
     if let SolidHarmonic::Regular(_) = mp {
         panic!("M2M not defined for Regular harmonics")
@@ -17,6 +29,12 @@ pub fn multipole_to_multipole(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic 
     return mp_shifted;
 }
 
+/// The table `|shift|^n * Y_n^m(direction of shift)` for every (n, m) up to
+/// `order`, in [`to_index`] order. This is what the shift operators (M2M and L2L)
+/// mix with the coefficients.
+///
+/// For a zero shift, which has no direction, it returns the identity: 1 at (0, 0)
+/// and 0 everywhere else, so that "shifting by nothing" changes nothing.
 pub(crate) fn shift_scale_harmonics(order: usize, shift: Vec3) -> Vec<Complex> {
     let shift_size: f64 = shift.map(|dim| dim.powi(2)).iter().sum::<f64>().sqrt();
     if shift_size == 0.0 {
@@ -35,6 +53,8 @@ pub(crate) fn shift_scale_harmonics(order: usize, shift: Vec3) -> Vec<Complex> {
     }
 }
 
+/// Adds into `mp_shifted` the shifted coefficients computed from `mp` and the
+/// shift table `shifted_moments`.
 fn mix_harmonics(mp: &SolidHarmonic, mp_shifted: &mut SolidHarmonic, shifted_moments: &[Complex]) {
     for n in 0..=mp_shifted.order() {
         let ni: i64 = n as i64;
@@ -47,6 +67,8 @@ fn mix_harmonics(mp: &SolidHarmonic, mp_shifted: &mut SolidHarmonic, shifted_mom
     }
 }
 
+/// The shifted coefficient (n, m): a sum over (lambda, mu) of the shift table
+/// entry times the original coefficient (n - lambda, m - mu).
 fn get_mixed_moment(mp: &SolidHarmonic, shifted_moments: &[Complex], n: i64, m: i64) -> Complex {
     let mut acc: Complex = Complex::zero();
     for lambda in 0..=n {
@@ -61,12 +83,16 @@ fn get_mixed_moment(mp: &SolidHarmonic, shifted_moments: &[Complex], n: i64, m: 
     return acc;
 }
 
+/// The weight of one term in the shift sum: [`epsilon`] times the square root
+/// of a product of two binomial coefficients.
 fn get_mix_coefficient_factor(n: i64, m: i64, lambda: i64, mu: i64) -> f64 {
     let ep: f64 = epsilon(m, mu);
     let bin: f64 = (binomial(n + m, lambda + mu) * binomial(n - m, lambda - mu)).sqrt();
     return ep * bin;
 }
 
+/// The complex part of one term in the shift sum: the conjugated shift table
+/// entry (lambda, mu) times the original coefficient (n - lambda, m - mu).
 fn get_mix_coefficient_direction(
     mp: &SolidHarmonic,
     shifted_moments: &[Complex],
@@ -80,7 +106,10 @@ fn get_mix_coefficient_direction(
     return shifted * unshifted;
 }
 
-// small helper because the hermonics aren't using standard convention for negative m
+/// -1 if `k` is negative and odd, +1 otherwise.
+///
+/// A helper because the harmonics do not use the standard convention for
+/// negative `m` (see the conventions in the [`harmonic`](crate::fmm::harmonic) module).
 fn sigma(k: i64) -> f64 {
     if k < 0 && k.rem_euclid(2) == 1 {
         -1.0
@@ -89,10 +118,12 @@ fn sigma(k: i64) -> f64 {
     }
 }
 
+/// The combined sign correction for the pair (`m`, `mu`): `sigma(m) * sigma(mu) * sigma(m - mu)`.
 pub(crate) fn epsilon(m: i64, mu: i64) -> f64 {
     sigma(m) * sigma(mu) * sigma(m - mu)
 }
 
+/// The binomial coefficient "n choose k" as an `f64`. It is 0 when `k < 0` or `k > n`.
 pub(crate) fn binomial(n: i64, k: i64) -> f64 {
     if k < 0 || n < k {
         return 0.0;

@@ -1,3 +1,5 @@
+//! The octree that the FMM runs on.
+
 use std::array::from_fn;
 use std::cell::RefCell;
 
@@ -9,15 +11,56 @@ use crate::fmm::operators::{
 };
 use crate::shared::{Body, ORIGIN, System, Vec3};
 
+/// A cell is split only while it holds more than this many bodies.
+///
+/// Larger leaves mean more direct (P2P) work and fewer, cheaper cell
+/// conversions; smaller leaves do the opposite.
 const MAX_LEAF_BODIES: usize = 64;
+
+/// One cell of the FMM octree.
+///
+/// Like the Barnes-Hut tree, a cell is a leaf or has eight children, and only
+/// leaves hold bodies. Besides its cube, every cell carries two expansions about
+/// its center:
+///
+/// - the **mass distribution** of what is inside it (an irregular harmonic), and
+/// - the **external potential** (a regular harmonic) that everything *not* in a
+///   nearby cell makes over it.
+///
+/// A leaf also carries a running acceleration for each of its bodies.
+///
+/// # Using the tree
+///
+/// A step calls these in order; each needs the one before it.
+///
+/// ```text
+/// let mut tree = FmmTree::new(system, p);
+/// tree.accumulate_mass_distribution();   // up:     bodies -> cell summaries
+/// tree.assemble_potential();             // across: far cells -> fields, near leaves -> direct sums
+/// tree.inherit_potential();              // down:   fields -> body accelerations
+/// let acc = tree.accelerations(bodies);  // collect, in the order of `bodies`
+/// ```
+///
+/// The potentials and accelerations sit in [`RefCell`]s because the traversal in
+/// `assemble_potential` reads one cell's summary while adding to another cell's
+/// field (possibly the same cell, since a cell interacts with itself), and Rust's
+/// borrow rules do not let it hold `&mut` to a part of the tree it is also reading.
 pub struct FmmTree<'a> {
+    /// The bodies of a leaf; for an interior cell, an empty system that records the cell's cube.
     system: System<'a>,
-    mass_distribution: SolidHarmonic, // the mass distribution in the cell as moments
-    external_potential: RefCell<SolidHarmonic>, // the potential field felt in the cell
+    /// The mass distribution in the cell as moments (irregular, about the cell center).
+    mass_distribution: SolidHarmonic,
+    /// The potential field felt in the cell, made by everything outside its near neighbours (regular, about the cell center).
+    external_potential: RefCell<SolidHarmonic>,
+    /// The eight child cells, or empty for a leaf.
     children: Vec<FmmTree<'a>>,
+    /// For a leaf, the acceleration of each of its bodies so far (same order as `system.bodies`). Empty for interior cells.
     acceleration: RefCell<Vec<Vec3>>,
 }
 impl<'a> FmmTree<'a> {
+    /// Builds the tree for `system` with expansions of order `p` and the default leaf size of 64 bodies.
+    ///
+    /// The expansions start at zero; the passes below fill them in.
     pub fn new(system: System<'a>, p: usize) -> FmmTree<'a> {
         FmmTree::with_leaf_limit(system, p, MAX_LEAF_BODIES)
     }
@@ -59,9 +102,15 @@ impl<'a> FmmTree<'a> {
             };
         }
     }
+    /// A leaf is a cell that was not split. Only leaves hold bodies.
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
+    /// The **up** pass: fills in every cell's mass distribution.
+    ///
+    /// A leaf summarizes its bodies with [`particle_to_multipole`]. An interior
+    /// cell shifts each child's summary to its own center with
+    /// [`multipole_to_multipole`] and adds them. Children are done before parents.
     pub fn accumulate_mass_distribution(&mut self) {
         if self.is_leaf() {
             self.mass_distribution = particle_to_multipole(
@@ -79,10 +128,30 @@ impl<'a> FmmTree<'a> {
         }
     }
 
+    /// The **across** pass: builds every cell's external potential and does all the near-field direct sums.
+    ///
+    /// It starts one traversal over pairs of cells with the root against itself
+    /// (see `interact`), after building the order-dependent [`M2LScalings`] once.
+    /// Needs [`accumulate_mass_distribution`](Self::accumulate_mass_distribution) first.
     pub fn assemble_potential(&self) {
         let scale = M2LScalings::new(self.mass_distribution.order());
         self.interact(self, &scale);
     }
+    /// The dual traversal: adds the pull of the cell `source` on the cell `self`.
+    ///
+    /// For a pair of cells, the first rule that applies wins:
+    ///
+    /// ```text
+    /// well separated:           convert source's summary into a field over self (M2L)
+    /// both are leaves:          sum their bodies directly (P2P)
+    /// self is a leaf:           recurse into source's children
+    /// source is a leaf:         recurse into self's children
+    /// otherwise:                split the larger cell (self on a tie) and recurse
+    /// ```
+    ///
+    /// Splitting the larger cell keeps the two cells about the same size, so they
+    /// become well separated sooner. A cell is never well separated from itself,
+    /// so the root-against-itself start always descends.
     fn interact(&self, source: &FmmTree, scale: &M2LScalings) {
         if well_separated(&self.system, &source.system) {
             let shift = from_fn(|i| self.system.center[i] - source.system.center[i]);
@@ -114,6 +183,14 @@ impl<'a> FmmTree<'a> {
             }
         }
     }
+    /// The **down** pass: gives every body its far-field acceleration.
+    ///
+    /// An interior cell adds its field to each child's field, after shifting it to
+    /// the child's center with [`local_to_local`]. A leaf then reads an
+    /// acceleration for each of its bodies with [`local_to_particle`], adding to
+    /// the near-field sums already there. Parents are done before children, so
+    /// every cell's field already includes everything its ancestors received.
+    /// Needs [`assemble_potential`](Self::assemble_potential) first.
     pub fn inherit_potential(&self) {
         if self.is_leaf() {
             local_to_particle(
@@ -131,11 +208,20 @@ impl<'a> FmmTree<'a> {
             }
         }
     }
+    /// Gathers the accelerations of all bodies, in the order of `bodies`.
+    ///
+    /// `bodies` must be the slice that this tree's system was built from. The
+    /// tree's bodies are references into that slice, and each is matched to its
+    /// slot by its memory address (see `index_in`).
+    ///
+    /// # Panics
+    /// If a body in the tree is not an element of `bodies`.
     pub fn accelerations(&self, bodies: &[Body]) -> Vec<Vec3> {
         let mut out: Vec<Vec3> = vec![ORIGIN; bodies.len()];
         self.collect_accelerations(bodies, &mut out);
         return out;
     }
+    /// Walks down to the leaves and adds each body's acceleration into its slot in `out`.
     fn collect_accelerations(&self, bodies: &[Body], out: &mut [Vec3]) {
         if self.is_leaf() {
             for (body, acc) in self
@@ -155,7 +241,15 @@ impl<'a> FmmTree<'a> {
     }
 }
 
+/// How far apart two cells must be, compared with their size, to count as well
+/// separated. Smaller is more accurate and slower, since fewer pairs qualify.
 const THETA: f64 = 0.5;
+
+/// Whether two cells are far enough apart for the multipole-to-local conversion.
+///
+/// A cube of half-width `hw` fits inside a sphere of radius `sqrt(3) * hw`, so
+/// the test is: the two bounding spheres' radii added together must be less than
+/// `THETA` times the distance between the centers.
 fn well_separated(target: &System, source: &System) -> bool {
     let dist2: f64 = target
         .center
@@ -167,6 +261,14 @@ fn well_separated(target: &System, source: &System) -> bool {
     3.0_f64 * (target.hw + source.hw).powi(2) < THETA.powi(2) * dist2
 }
 
+/// The position of `body` within `bodies`, found from its memory address.
+///
+/// This works because the tree holds references to the elements of the original
+/// slice, so a body's address says which slot it is. It avoids storing an index
+/// with every body.
+///
+/// # Panics
+/// If `body` is not an element of `bodies`.
 fn index_in(body: &Body, bodies: &[Body]) -> usize {
     let body_addr: usize = std::ptr::from_ref(body).addr();
     let start_addr: usize = bodies.as_ptr().addr();

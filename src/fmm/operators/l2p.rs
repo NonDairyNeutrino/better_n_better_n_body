@@ -1,3 +1,5 @@
+//! L2P: read the acceleration of each body off a leaf's local expansion.
+
 use std::array::from_fn;
 
 use crate::{
@@ -9,6 +11,21 @@ use crate::{
     shared::{Body, G, Vec3},
 };
 
+/// Adds to `out[i]` the acceleration of `bodies[i]` that the field `local` gives.
+///
+/// `local` is the field over a leaf, expanded about `center`. For each body the
+/// field is re-centered on the body with [`local_to_local`], after which the
+/// degree-1 coefficients are the gradient of the potential at the body. The
+/// acceleration is `G` times that gradient, since the potential `Σ m / r` grows
+/// toward the mass.
+///
+/// The result is *added* to `out`, not stored, because a body's acceleration is
+/// the sum of a near part (from [`particle_to_particle`](super::particle_to_particle))
+/// and a far part (this). An order-0 field is constant, has no gradient, and
+/// adds nothing.
+///
+/// # Panics
+/// If `local` is irregular, or if `bodies` and `out` differ in length.
 pub fn local_to_particle(local: &SolidHarmonic, center: Vec3, bodies: &[&Body], out: &mut [Vec3]) {
     assert_eq!(bodies.len(), out.len());
 

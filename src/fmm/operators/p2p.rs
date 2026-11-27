@@ -1,8 +1,19 @@
+//! P2P: the direct pull of near bodies on each other.
+
 use crate::{
     direct::calculate_acceleration_from_system,
     shared::{Body, Vec3},
 };
 
+/// Adds to `out[i]` the acceleration of `targets[i]` caused by every body in `sources`.
+///
+/// This is plain direct summation (see [`crate::direct`]) over two groups of
+/// bodies, with no approximation. A source at exactly a target's position is
+/// skipped, which is how a leaf's bodies avoid pulling on themselves when the
+/// source and target group are the same.
+///
+/// # Panics
+/// If `targets` and `out` differ in length.
 pub fn particle_to_particle(targets: &[&Body], sources: &[&Body], out: &mut [Vec3]) {
     assert_eq!(
         targets.len(),

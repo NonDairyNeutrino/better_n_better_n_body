@@ -1,14 +1,29 @@
-//! This is a module documentation
+//! Types and functions used by every algorithm: [`Body`], [`System`], the
+//! force law [`gravity`], and a small reproducible random number generator.
 mod body;
 mod system;
 pub use body::Body;
 pub use system::System;
 
+/// The gravitational constant.
+///
+/// Set to 1 because the simulation is nondimensionalized.
 pub const G: f64 = 1.0_f64; // non-dimensionalized, otherwise 6.67 * 1e-11 in SI
+/// A point or vector in 3D space, as `[x, y, z]`.
 pub type Vec3 = [f64; 3];
+/// The point `[0, 0, 0]`. Also the zero vector, used as the start of every sum.
 pub const ORIGIN: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
 
 // -------------------------------------------------------------------------------- gravity
+/// The gravitational acceleration that `object` causes at `pos`.
+///
+/// This is `G * m * (x_object - pos) / |x_object - pos|^3`. It points from `pos`
+/// toward the object and has size `G * m / r^2`. The cube in the denominator is
+/// deliberate: two powers of `r` give the inverse-square law and the third turns
+/// the displacement vector into a unit vector.
+///
+/// If `pos` is exactly the object's position the result is not finite, so
+/// callers skip a body's pull on itself before calling this.
 pub fn gravity(object: &Body, pos: &Vec3) -> Vec3 {
     let strength: f64 = G * object.mass / object.distance(pos).powi(3); // 3 is on purpose
     let mut grav: Vec3 = [0.0_f64, 0.0_f64, 0.0_f64];
@@ -27,13 +42,26 @@ const B: u64 = 1442695040888963407;
 // C = 2^-53
 const C: f64 = 1.1102230246251565e-16;
 
+/// A small deterministic pseudo-random number generator (a 64-bit
+/// linear-congruential generator).
+///
+/// The same seed always gives the same sequence, which keeps the benchmarks and
+/// tests reproducible. It is fast and good enough to scatter bodies, but it is
+/// not suitable for cryptography or for statistics that need high-quality
+/// randomness.
 pub struct RNG {
     state: u64,
 }
 impl RNG {
+    /// Creates a generator that starts from the seed `state`.
     pub fn new(state: u64) -> RNG {
         return RNG { state };
     }
+    /// Returns the next number, uniformly distributed in `[0, 1)`.
+    ///
+    /// Only the top 53 bits of the state are used, because the low bits of a
+    /// linear-congruential generator are the least random. They are scaled by
+    /// 2^-53, so every result is exactly representable as an `f64`.
     // Linear-Congruentional Generator
     pub fn rand(&mut self) -> f64 {
         self.state = self.state.wrapping_mul(A).wrapping_add(B);

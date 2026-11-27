@@ -1,20 +1,30 @@
+//! A minimal complex number type, with just the arithmetic the FMM needs.
+
 use std::{
     iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
+/// A complex number `re + i * im`.
+///
+/// Supports `+`, `-`, `*` (by another `Complex` or by an `f64`), unary `-`, their
+/// assigning forms, and `sum()` over iterators. It is `Copy`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Complex {
+    /// Real part.
     pub re: f64,
+    /// Imaginary part.
     pub im: f64,
 }
 impl Complex {
+    /// The number 0.
     pub fn zero() -> Complex {
         Complex {
             re: 0.0_f64,
             im: 0.0_f64,
         }
     }
+    /// The complex conjugate: the same real part and the opposite imaginary part.
     pub fn conj(self) -> Complex {
         Complex {
             re: self.re,

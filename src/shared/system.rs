@@ -1,14 +1,26 @@
 use super::{Body, ORIGIN, Vec3};
 use std::array::from_fn;
 
-/// A collection of bodies in a cubical space with a center and half-width
+/// A collection of bodies in a cubical space with a center and half-width.
+///
+/// A `System` borrows its bodies (it holds `&Body`, never a copy), so it is cheap
+/// to split and rejoin. That is how the Barnes-Hut and FMM trees divide space:
+/// [`partition`](System::partition) sorts the bodies of a cell into its eight
+/// child cells without moving any body.
+///
+/// The cube is the region `center ± hw` on each axis. The bodies are expected to
+/// lie inside it, but nothing checks that.
 #[derive(Debug)]
 pub struct System<'a> {
+    /// The bodies in this region, borrowed from the caller's slice.
     pub bodies: Vec<&'a Body>,
+    /// Center of the cube.
     pub center: Vec3,
+    /// Half of the cube's side length.
     pub hw: f64,
 }
 impl<'a> System<'a> {
+    /// Creates an empty system occupying the cube around `center` with half-width `half_width`.
     pub fn new(center: Vec3, half_width: f64) -> System<'a> {
         System {
             bodies: Vec::new(),
@@ -16,6 +28,9 @@ impl<'a> System<'a> {
             hw: half_width,
         }
     }
+    /// Creates a system holding every body in `bodies`, in a cube that contains all of them.
+    ///
+    /// See [`find_bounding_box`] for how the cube is chosen.
     pub fn from_bodies(bodies: &'a [Body]) -> System<'a> {
         let bods: Vec<&'a Body> = bodies.iter().collect();
         let (center, hw): (Vec3, f64) = find_bounding_box(bodies);
@@ -25,9 +40,11 @@ impl<'a> System<'a> {
             hw: hw,
         }
     }
+    /// Adds one body to the system.
     pub fn add_body(&mut self, body: &'a Body) {
         self.bodies.push(body);
     }
+    /// Adds every body in `bodies` to the system.
     pub fn add_bodies(&mut self, bodies: &'a [Body]) {
         // know how much more space is needed, so allocate first, then push each
         self.bodies.reserve(bodies.len());
@@ -35,12 +52,17 @@ impl<'a> System<'a> {
             self.bodies.push(body);
         }
     }
+    /// Adds every body of `system` to this one. The cube of this system is unchanged.
     pub fn join(&mut self, system: &'a System) {
         self.bodies.extend_from_slice(&system.bodies);
     }
+    /// The sum of the masses of all bodies in the system (0 if it is empty).
     pub fn find_total_mass(&self) -> f64 {
         self.bodies.iter().map(|b| b.mass).sum()
     }
+    /// The center of mass: the average position of the bodies, weighted by mass.
+    ///
+    /// An empty system returns [`ORIGIN`].
     pub fn find_com(&self) -> Vec3 {
         let mut com: Vec3 = ORIGIN;
         if self.bodies.is_empty() {
@@ -61,6 +83,12 @@ impl<'a> System<'a> {
         }
         return com;
     }
+    /// Splits the system into its eight octants, consuming it.
+    ///
+    /// Each octant is a cube with half the half-width, centered a quarter of the
+    /// side length away from the parent's center. The index of an octant is a
+    /// 3-bit number: bit 0 is set for the `+x` side, bit 1 for `+y` and bit 2 for
+    /// `+z`. A body exactly on a dividing plane goes to the `+` side.
     pub fn partition(self) -> [System<'a>; 8] {
         let mut systems: [System; 8] =
             from_fn(|i| System::new(child_center(self.center, self.hw, i), self.hw / 2.0));
@@ -74,6 +102,7 @@ impl<'a> System<'a> {
     }
 }
 
+/// Which octant (0..8) of the cube around `center` the point `pos` falls in. See [`System::partition`] for the numbering.
 fn child_index(center: Vec3, pos: Vec3) -> usize {
     let mut idx: usize = 0;
     if pos[0] >= center[0] {
@@ -87,6 +116,7 @@ fn child_index(center: Vec3, pos: Vec3) -> usize {
     }
     return idx;
 }
+/// The center of octant `index` of the cube (`center`, `half_width`), numbered as in [`System::partition`].
 fn child_center(center: Vec3, half_width: f64, index: usize) -> Vec3 {
     let mut chi_cen: Vec3 = ORIGIN;
     for dim in 0..center.len() {
@@ -96,6 +126,7 @@ fn child_center(center: Vec3, half_width: f64, index: usize) -> Vec3 {
     return chi_cen;
 }
 
+/// The average position of the bodies (not weighted by mass). `ORIGIN` for an empty slice.
 fn find_center(system: &[Body]) -> Vec3 {
     let mut center: Vec3 = ORIGIN;
     let n_bodies: f64 = system.len() as f64;
@@ -116,6 +147,7 @@ fn find_center(system: &[Body]) -> Vec3 {
     return center;
 }
 
+/// The largest distance from `center` to any body.
 fn find_half_width(system: &[Body], center: Vec3) -> f64 {
     let mut half_width: f64 = 0.0_f64;
     for obj in system {
@@ -128,6 +160,11 @@ fn find_half_width(system: &[Body], center: Vec3) -> f64 {
 }
 
 /// Find the center and half-width of a cube that contains the system.
+///
+/// The center is the average position of the bodies. The half-width is the
+/// distance from that center to the farthest body. A cube with that half-width
+/// contains the whole sphere of that radius, so it contains every body, with some
+/// room to spare in the corners. An empty slice gives `(ORIGIN, 0.0)`.
 pub fn find_bounding_box(system: &[Body]) -> (Vec3, f64) {
     let center: Vec3 = find_center(system);
     let width: f64 = find_half_width(system, center);

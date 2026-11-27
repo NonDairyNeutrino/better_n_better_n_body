@@ -1,8 +1,23 @@
+//! L2L: move a local expansion to a new center.
+
 use crate::fmm::complex::Complex;
 use crate::fmm::harmonic::{SolidHarmonic, to_index};
 use crate::fmm::operators::m2m::{binomial, epsilon, shift_scale_harmonics};
 use crate::shared::Vec3;
 
+/// Re-expresses the field `local`, centered at some point, about a second point.
+///
+/// `shift` is the new center minus the old center. The FMM uses this to hand a
+/// cell's field down to a child (`shift` = child center - parent center), and
+/// [`local_to_particle`](super::local_to_particle) uses it to move a leaf's field
+/// to the position of a body.
+///
+/// The result has the same order as the input. Re-centering a truncated series
+/// loses nothing beyond the truncation that is already there. A zero shift gives
+/// back the same coefficients.
+///
+/// # Panics
+/// If `local` is irregular.
 pub fn local_to_local(local: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
     if let SolidHarmonic::Irregular(_) = local {
         panic!("L2L requires regular harmonic as input")
@@ -23,6 +38,8 @@ pub fn local_to_local(local: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
     return res;
 }
 
+/// The coefficient (j, k) of the shifted field: a weighted sum of the unshifted
+/// coefficients of degree `j` and above, mixed with the shift table.
 fn local_coefficient(local: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -> Complex {
     let mut sum: Complex = Complex::zero();
     let p: i64 = local.order() as i64;
@@ -38,6 +55,8 @@ fn local_coefficient(local: &SolidHarmonic, table: &[Complex], j: i64, k: i64) -
     return sum;
 }
 
+/// The combinatorial weight of one term of the shift sum: a sign correction times
+/// the square root of a product of two binomial coefficients.
 fn weight(n: i64, m: i64, lambda: i64, mu: i64) -> f64 {
     let ep: f64 = epsilon(m, mu);
     let binp: f64 = binomial(n + m, lambda + mu);

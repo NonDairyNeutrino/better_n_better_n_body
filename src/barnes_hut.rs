@@ -1,7 +1,22 @@
+//! The Barnes-Hut method: group distant bodies and treat each group as one body.
+//!
+//! Each step builds an octree over the bodies (see [`tree`]). A body then walks
+//! the tree from the root. A cell that is small and far away compared with its
+//! distance is replaced by a single point mass at its center of mass. A cell
+//! that is too close is opened and its children are visited instead. The force
+//! on one body costs about log N interactions, so a step costs O(N log N).
+//!
+//! The opening angle θ (`resolution` in the code) is the accuracy knob.
+
 mod tree;
 use crate::shared::{Body, System, Vec3};
 use tree::Tree;
 
+/// One Barnes-Hut time step: build a fresh tree over `bodies`, find every
+/// acceleration with it, then move the bodies.
+///
+/// The tree is rebuilt every step because the bodies move. The accelerations are
+/// all found before any body moves.
 fn simulate_step(bodies: &mut [Body], dt: f64, resolution: f64) {
     // build the root
     let universe: System = System::from_bodies(bodies);

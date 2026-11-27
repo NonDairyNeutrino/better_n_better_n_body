@@ -1,3 +1,5 @@
+//! P2M: summarize the bodies of a leaf as a multipole expansion.
+
 use crate::{
     fmm::{
         complex::Complex,
@@ -7,6 +9,15 @@ use crate::{
 };
 use std::array::from_fn;
 
+/// The mass distribution of `bodies`, as an irregular harmonic of order `p` about `center`.
+///
+/// Each body of mass `m` at displacement `r` from `center` adds `m * r^n * conj(Y_n^m)`
+/// to the coefficient (n, m), where `Y_n^m` is evaluated in the direction of the
+/// displacement. The degree-0 coefficient is the total mass. A body exactly at
+/// `center` has no direction and adds only to that coefficient.
+///
+/// Far from the bodies, the series reproduces the potential `Σ m_j / |x - x_j|`
+/// to an accuracy that improves with `p` and with distance.
 pub fn particle_to_multipole<'b>(
     bodies: impl IntoIterator<Item = &'b Body>,
     center: Vec3,

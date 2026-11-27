@@ -1,15 +1,37 @@
+//! The octree used by Barnes-Hut.
+
 use crate::shared::{Body, ORIGIN, System, Vec3, gravity};
 
+/// A cell is not split further once its space diagonal is shorter than this.
+/// It stops the recursion when bodies are (nearly) at the same place.
 const MIN_CELL_SIZE: f64 = 1e-10;
+/// The space diagonal of a cube divided by its half-width: `2 * sqrt(3)`.
 const DIAGONAL: f64 = 3.4641016151377544; // 2 * sqrt(3)
 
+/// One cell of the octree.
+///
+/// A cell is either a *leaf* (no children) or has exactly eight children, one
+/// per octant. Every cell remembers the total mass and center of mass of all the
+/// bodies inside it, which is what a far-away body sees instead of the bodies.
+///
+/// Only leaves hold bodies. When a cell is split its bodies are handed down to
+/// the children, so an interior cell keeps just its center and half-width in an
+/// otherwise empty [`System`].
 pub struct Tree<'a> {
+    /// The bodies of a leaf; for an interior cell, an empty system that records the cell's cube.
     system: System<'a>,
+    /// Total mass of everything inside the cell.
     mass: f64,
+    /// Center of mass of everything inside the cell.
     com: Vec3,
+    /// The eight child cells, or empty for a leaf.
     children: Vec<Tree<'a>>,
 }
 impl<'a> Tree<'a> {
+    /// Builds the tree for `system`, splitting cells recursively.
+    ///
+    /// A cell is split while it holds more than one body and is not smaller than
+    /// the minimum cell size. This takes O(N log N) for evenly spread bodies.
     pub fn new(system: System<'a>) -> Tree<'a> {
         let mass: f64 = system.find_total_mass();
         let com: Vec3 = system.find_com();
@@ -39,10 +61,25 @@ impl<'a> Tree<'a> {
         }
     }
 
+    /// A leaf is a cell that was not split.
     fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
 
+    /// The gravitational acceleration at `pos` caused by everything in this cell.
+    ///
+    /// `resolution` is the opening angle θ. Working down from this cell:
+    ///
+    /// ```text
+    /// if the cell is empty:            no acceleration
+    /// if the cell is a leaf:           pull of its body (none if it is at `pos`)
+    /// if width <= θ * distance to com: pull of the cell as one point mass
+    /// otherwise:                       add up the pull of the eight children
+    /// ```
+    ///
+    /// where `width` is the side of the cell and `distance` is measured from
+    /// `pos` to the cell's center of mass. θ = 0 never takes the shortcut, so the
+    /// answer is then the direct sum.
     pub fn accel_at(&self, pos: &Vec3, resolution: f64) -> Vec3 {
         // if there's no mass, there's no acceleration due to gravity in this region
         if self.mass == 0.0 {
@@ -89,6 +126,8 @@ impl<'a> Tree<'a> {
     }
 }
 
+/// Whether a cell should be divided into eight children: it must hold more than
+/// one body and be bigger than [`MIN_CELL_SIZE`].
 fn should_split(system: &System) -> bool {
     let is_big_enough: bool = DIAGONAL * system.hw >= MIN_CELL_SIZE;
     let enough_bodies: bool = system.bodies.len() > 1_usize;
