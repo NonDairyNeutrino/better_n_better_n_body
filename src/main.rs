@@ -3,7 +3,7 @@ mod direct;
 mod fmm;
 mod shared;
 use shared::Body;
-use std::{array::from_fn, time::Instant};
+use std::time::Instant;
 
 use crate::shared::RNG;
 
@@ -19,13 +19,13 @@ fn main() {
     println!("Simulating {NBODIES} bodies");
 
     // direct simulation
-    // println!("Simulating using direct method");
+    println!("Simulating using direct method");
     let mut start: Instant = Instant::now();
-    // direct::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME);
-    // println!("direct time: {:?}", Instant::now() - start);
+    direct::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME);
+    println!("direct time: {:?}", Instant::now() - start);
 
     // Barnes-Hut
-    for resolution in [0.5_f64 /* 0.4_f64, 0.6, 0.8, 1.0 */] {
+    for resolution in [0.4_f64, 0.6, 0.8, 1.0] {
         println!("Simulating using Barnes-Hut with cell limit theta = {resolution}");
         start = Instant::now();
         barnes_hut::simulate(&mut bodies.clone(), TIME_STEP, TOTAL_TIME, resolution);
