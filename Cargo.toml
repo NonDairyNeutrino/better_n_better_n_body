@@ -2,5 +2,9 @@
 name = "better-n-better-n-body"
 version = "0.1.0"
 edition = "2024"
+description = "A showcase of better and better algorithms for gravitational N-body simulation: direct, Barnes-Hut and the Fast Multipole Method."
+license = "GPL-3.0-only"
+repository = "https://github.com/NonDairyNeutrino/better_n_better_n_body"
+readme = "README.md"
 
 [dependencies]
