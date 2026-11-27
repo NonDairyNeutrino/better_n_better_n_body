@@ -34,7 +34,11 @@
 //! for what the coefficients are.
 //!
 //! For the idea in everyday terms see `src/fmm/README.md`, and for the physics
-//! in words, `src/fmm/PHYSICS.md`.
+//! in words, `src/fmm/PHYSICS.md`. Both are reproduced below.
+//!
+#![doc = include_str!("fmm/README.md")]
+//!
+#![doc = include_str!("fmm/PHYSICS.md")]
 
 mod complex;
 mod harmonic;

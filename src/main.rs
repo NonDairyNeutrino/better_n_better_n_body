@@ -1,21 +1,12 @@
-//! # better-n-better-n-body
+#![doc = include_str!("../README.md")]
 //!
-//! A showcase of better and better algorithms for simulating gravitational
-//! N-body systems. Each one trades a little accuracy for a lot of speed, and the
-//! modules are meant to be read in this order, simplest first:
+#![doc = include_str!("../PHYSICS.md")]
 //!
-//! | Module           | Method                 | Cost per step |
-//! | ---------------- | ---------------------- | ------------- |
-//! | [`direct`]       | direct summation       | O(N²)         |
-//! | [`barnes_hut`]   | Barnes-Hut octree      | O(N log N)    |
-//! | [`fmm`]          | Fast Multipole Method  | O(N)          |
+//! # Reading the code
 //!
-//! [`shared`] holds what all three use: the [`Body`] type, the
-//! [`System`](shared::System) container and the force law
-//! [`gravity`](shared::gravity).
-//!
-//! The binary simulates the same random universe with every method and prints
-//! how long each takes. Run it with `cargo run --release`.
+//! The modules, simplest first: [`direct`], [`barnes_hut`], [`fmm`]. What all
+//! three share (the [`Body`] type, the [`System`](shared::System) container and
+//! the force law [`gravity`](shared::gravity)) is in [`shared`].
 //!
 //! # Building these docs
 //!
@@ -25,10 +16,6 @@
 //! ```sh
 //! cargo doc --document-private-items --open
 //! ```
-//!
-//! # Units
-//!
-//! Everything is nondimensionalized with G = 1 ([`shared::G`]).
 
 mod barnes_hut;
 mod direct;

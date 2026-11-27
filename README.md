@@ -103,7 +103,7 @@ Planned work on the Fast Multipole Method, in the order it is intended to be don
 
 ## Layout
 
-```
+```text
 src/
 ├── main.rs            benchmark driver
 ├── shared.rs          Vec3, gravity, RNG, test helpers
@@ -129,4 +129,4 @@ src/
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE).
+GPL-3.0. See [LICENSE](https://github.com/NonDairyNeutrino/better_n_better_n_body/blob/trunk/LICENSE).

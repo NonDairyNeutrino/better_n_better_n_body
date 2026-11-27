@@ -27,7 +27,9 @@ You want to know how loud the school is at your desk.
 
 The tool for both is the expansion of the kernel
 
-    1/|r − r'| = Σₙ (r'ⁿ / rⁿ⁺¹) Pₙ(cos γ),   |r'| < |r|
+```text
+1/|r − r'| = Σₙ (r'ⁿ / rⁿ⁺¹) Pₙ(cos γ),   |r'| < |r|
+```
 
 which separates the source position `r'` from the observation point `r`. The addition theorem rewrites `Pₙ` as products of spherical harmonics.
 
@@ -73,12 +75,16 @@ The only approximation is truncating the series at order `p`. Everything else is
 
 For a body in leaf `B`:
 
-    a(x) = −∇φ_near(x) − ∇φ_external(x)
+```text
+a(x) = −∇φ_near(x) − ∇φ_external(x)
+```
 
 - `φ_near`: bodies in `B` and its touching neighbours, summed directly.
 - `φ_external`: evaluated from `B`'s external potential. The external potential of a cell `A` is
 
-      Φ(A) = Σ_{C ∈ W(A)} M2L(mass distribution of C) + L2L(Φ(parent of A))
+  ```text
+  Φ(A) = Σ_{C ∈ W(A)} M2L(mass distribution of C) + L2L(Φ(parent of A))
+  ```
 
   where `W(A)` is the set of cells well separated from `A` whose parents were *not* well separated from `A`'s parent. This avoids counting any source twice: everything far from the parent has already come down from above. The near zone grows with the size of the cell, so each level adds only the contributions that *became* external at that level.
 
