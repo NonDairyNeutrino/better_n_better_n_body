@@ -41,6 +41,23 @@ cargo test            # unit tests, FMM and Barnes-Hut accuracy against direct s
 
 `main` simulates 100,000 random bodies for 10 steps (`dt` = 0.1) and prints the wall-clock time for direct summation, for Barnes-Hut at θ = 0.4, 0.6, 0.8 and 1.0, and for the FMM at order 2. The direct run takes several minutes at this size. Use `--release`: debug builds are far too slow to say anything meaningful about performance. The parameters (body count, time step, total time, order) are constants in `main` in `src/main.rs`.
 
+### With Docker
+
+Each [release](https://github.com/NonDairyNeutrino/better_n_better_n_body/releases) publishes a container image, so you can run the benchmark without installing Rust:
+
+```sh
+docker run --rm ghcr.io/nondairyneutrino/better_n_better_n_body
+```
+
+This runs the same thing as `cargo run --release`, with the same settings, so it prints nothing for the first several minutes while direct summation runs. Expect about ten minutes in total, depending on your machine. To pin a version, use a tag such as `ghcr.io/nondairyneutrino/better_n_better_n_body:0.1.0`. The image is built for `linux/amd64` only.
+
+To build the image yourself:
+
+```sh
+docker build -t better-n-better-n-body .
+docker run --rm better-n-better-n-body
+```
+
 ## Benchmarks
 
 What `main` prints: 100,000 uniform random bodies, 10 steps (`dt` = 0.1, total time 1.0), release build, a single run on one machine.
