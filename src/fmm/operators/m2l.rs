@@ -8,14 +8,46 @@ use crate::{
 };
 
 /// Turn the mass distribution of a source cell into the external potential at a target cell.
-pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3) -> SolidHarmonic {
+pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3, scale: &M2LScalings) -> SolidHarmonic {
     if let SolidHarmonic::Regular(_) = mp {
         panic!("M2L requires irregular harmonic as input")
     }
 
-    let table: Vec<Complex> = irregular_table(mp.order(), shift);
+    assert_eq!(
+        scale.order,
+        mp.order(),
+        "Scaling order does not match harmonic order"
+    );
+
+    let mut table: Vec<Complex> = irregular_table(mp.order(), shift);
+    table
+        .iter_mut()
+        .zip(&scale.table)
+        .for_each(|(t, sc)| *t = *t * *sc);
+
+    let mut moments: Vec<Complex> = Vec::with_capacity((mp.order() + 1).pow(2));
+    for (mpc, ssc) in mp.coeffs().iter().zip(&scale.source) {
+        let scaled: Complex = *mpc * *ssc;
+        moments.push(scaled);
+    }
+
     let mut local_potential: SolidHarmonic = SolidHarmonic::regular(mp.order());
-    convert_moments(mp, &mut local_potential, &table);
+    for j in 0..=mp.order() {
+        let ji: i64 = j as i64;
+        for k in -ji..=ji {
+            let mut sum = Complex::zero();
+            for n in 0..=mp.order() {
+                let ni: i64 = n as i64;
+                for m in -ni..=ni {
+                    sum += moments[to_index(ni, m)]
+                        * table[to_index(ji + ni, m - k)]
+                        * (sgn(k, m) as f64)
+                }
+            }
+            local_potential.coeffs_mut()[to_index(ji, k)] = sum * scale.output[to_index(ji, k)]
+        }
+    }
+    // convert_moments(mp, &mut local_potential, &table);
     return local_potential;
 }
 
@@ -83,6 +115,67 @@ fn conversion_sign(j: i64, k: i64, m: i64) -> f64 {
         1.0_f64
     };
     return signj * signkm;
+}
+
+pub struct M2LScalings {
+    order: usize,
+    source: Vec<f64>,
+    table: Vec<f64>,
+    output: Vec<f64>,
+}
+impl M2LScalings {
+    pub fn new(order: usize) -> M2LScalings {
+        // build factorials because there's not a function for it???
+        let fact: Vec<f64> = Vec::from_fn(4 * order + 1, |i| (0..=i).product::<usize>() as f64);
+
+        // build source weights
+        let mut source: Vec<f64> = Vec::with_capacity((order + 1).pow(2));
+        for n in 0..=order {
+            let ni: i64 = n as i64;
+            for m in -ni..=ni {
+                let factp: f64 = fact[(ni + m) as usize];
+                let factm: f64 = fact[(ni - m) as usize];
+                source[to_index(ni, m)] = (factp * factm).powf(-0.5);
+            }
+        }
+
+        // build table
+        let mut table: Vec<f64> = Vec::with_capacity((2 * order + 1).pow(2));
+        for n in 0..=(2 * order) {
+            let ni: i64 = n as i64;
+            for m in -ni..=ni {
+                let factp: f64 = fact[(ni + m) as usize];
+                let factm: f64 = fact[(ni - m) as usize];
+                table[to_index(ni, m)] = (factp * factm).sqrt();
+            }
+        }
+
+        // build output weights
+        let mut output: Vec<f64> = Vec::with_capacity((order + 1).pow(2));
+        for j in 0..=order {
+            let ji: i64 = j as i64;
+            for k in -ji..=ji {
+                let factp: f64 = fact[(ji + k) as usize];
+                let factm: f64 = fact[(ji - k) as usize];
+                output[to_index(ji, k)] = (-1.0_f64).powi(ji as i32) * (factp * factm).powf(-0.5);
+            }
+        }
+
+        return M2LScalings {
+            order,
+            source,
+            table,
+            output,
+        };
+    }
+}
+
+fn sgn(k: i64, m: i64) -> i64 {
+    if 0 < k * m && k.abs().min(m.abs()).rem_euclid(2) == 1 {
+        return -1;
+    } else {
+        return 1;
+    }
 }
 
 #[cfg(test)]

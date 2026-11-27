@@ -2,6 +2,7 @@ use std::array::from_fn;
 use std::cell::RefCell;
 
 use crate::fmm::harmonic::SolidHarmonic;
+use crate::fmm::operators::m2l::M2LScalings;
 use crate::fmm::operators::{
     local_to_local, local_to_particle, multipole_to_local, multipole_to_multipole,
     particle_to_multipole, particle_to_particle,
@@ -79,13 +80,14 @@ impl<'a> FmmTree<'a> {
     }
 
     pub fn assemble_potential(&self) {
-        self.interact(self);
+        let scale = M2LScalings::new(self.mass_distribution.order());
+        self.interact(self, &scale);
     }
-    fn interact(&self, source: &FmmTree) {
+    fn interact(&self, source: &FmmTree, scale: &M2LScalings) {
         if well_separated(&self.system, &source.system) {
             let shift = from_fn(|i| self.system.center[i] - source.system.center[i]);
             *self.external_potential.borrow_mut() +=
-                &multipole_to_local(&source.mass_distribution, shift);
+                &multipole_to_local(&source.mass_distribution, shift, scale);
         } else if self.is_leaf() && source.is_leaf() {
             // if the cells are close enough, just add the bodies directly
             particle_to_particle(
@@ -95,20 +97,20 @@ impl<'a> FmmTree<'a> {
             );
         } else if self.is_leaf() {
             for child in source.children.iter() {
-                self.interact(child);
+                self.interact(child, scale);
             }
         } else if source.is_leaf() {
             for child in self.children.iter() {
-                child.interact(source);
+                child.interact(source, scale);
             }
         } else if self.system.hw >= source.system.hw {
             // split the larger one
             for child in self.children.iter() {
-                child.interact(source);
+                child.interact(source, scale);
             }
         } else {
             for child in source.children.iter() {
-                self.interact(child);
+                self.interact(child, scale);
             }
         }
     }
