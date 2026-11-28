@@ -38,11 +38,7 @@ pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3, scale: &M2LScalings) 
         "Scaling order does not match harmonic order"
     );
 
-    let mut table: Vec<Complex> = irregular_table(mp.order(), shift);
-    table
-        .iter_mut()
-        .zip(&scale.table)
-        .for_each(|(t, sc)| *t = *t * *sc);
+    let table: Vec<Complex> = scaled_table(mp.order(), shift, scale);
 
     let mut moments: Vec<Complex> = Vec::with_capacity((mp.order() + 1).pow(2));
     for (mpc, ssc) in mp.coeffs().iter().zip(&scale.source) {
@@ -70,6 +66,7 @@ pub fn multipole_to_local(mp: &SolidHarmonic, shift: Vec3, scale: &M2LScalings) 
     return local_potential;
 }
 
+#[cfg(test)]
 /// `Y_n^m(shift) / |shift|^(n+1)` for every (n, m) up to degree `2 * order`.
 /// Converting an order-`p` expansion needs the table to twice the order.
 fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
@@ -83,6 +80,29 @@ fn irregular_table(order: usize, shift: Vec3) -> Vec<Complex> {
         .enumerate()
         .map(|(i, e)| *e * r.powi(-(from_index(i).0 + 1) as i32))
         .collect();
+}
+
+fn scaled_table(order: usize, shift: Vec3, scale: &M2LScalings) -> Vec<Complex> {
+    let r: f64 = shift.map(|e| e.powi(2)).iter().sum::<f64>().sqrt();
+    if r == 0.0 {
+        panic!("Cannot use zero shift")
+    }
+    let harms: Vec<Complex> = harmonics(shift, 2 * order);
+
+    let r_inv: f64 = 1.0_f64 / r;
+    let mut s: f64 = r_inv;
+    let mut idx: usize = 0;
+    let mut out: Vec<Complex> = Vec::with_capacity((2 * order + 1).pow(2));
+    for n in 0..=(2 * order) {
+        let ni: i64 = n as i64;
+        for _ in -ni..=ni {
+            let e: Complex = harms[idx] * (scale.table[idx] * s);
+            out.push(e);
+            idx += 1;
+        }
+        s *= r_inv;
+    }
+    return out;
 }
 
 /// Precomputed weights for [`multipole_to_local`] at one fixed order.
