@@ -69,7 +69,7 @@ What `main` prints: 100,000 uniform random bodies, 10 steps (`dt` = 0.1, total t
 | Barnes-Hut, θ = 0.6 | 25 s  | 18×                | 5.8×10⁻³ |
 | Barnes-Hut, θ = 0.8 | 13 s  | 35×                | 1.2×10⁻² |
 | Barnes-Hut, θ = 1.0 | 8 s   | 57×                | 2.3×10⁻² |
-| FMM, order 2        | 39 s  | 12×                | 6.0×10⁻³ |
+| FMM, order 2        | 36 s  | 13×                | 6.0×10⁻³ |
 
 `main` does not report the error. It is the relative root-mean-square difference from direct summation for one force evaluation, measured separately on a 20,000-body system, because direct summation at 100,000 bodies is slow. These are single runs, and the bodies move during the run, so the tree changes from step to step. Expect repeated runs to differ by about 10% or more.
 
@@ -87,15 +87,15 @@ Time and accuracy together, for **one force evaluation** of 100,000 uniform rand
 | FMM, order 3        | 6.8 s   | 1.1×10⁻³ |
 | FMM, order 4        | 14.2 s  | 1.9×10⁻⁴ |
 
-Compare methods at equal error, not at equal settings. At moderate accuracy (about 5×10⁻³) Barnes-Hut is faster: θ = 0.6 in 1.8 s against 3.4 s for order 2 here, and 25 s against 39 s in the full run above. The FMM at order 2 takes about as long as Barnes-Hut at θ = 0.5 but is less accurate. At finer accuracy the FMM is ahead (order 3 in 6.8 s against Barnes-Hut at θ = 0.3 in 10.6 s, for about the same error), but `main` only runs order 2, so the full run does not show it. The FMM has not been tuned yet; see the roadmap.
+Compare methods at equal error, not at equal settings. At moderate accuracy (about 5×10⁻³) Barnes-Hut is faster: θ = 0.6 in 1.8 s against 3.4 s for order 2 here, and 25 s against 36 s in the full run above. The FMM at order 2 takes about as long as Barnes-Hut at θ = 0.5 but is less accurate. At finer accuracy the FMM is ahead (order 3 in 6.8 s against Barnes-Hut at θ = 0.3 in 10.6 s, for about the same error), but `main` only runs order 2, so the full run does not show it. The FMM has not been tuned yet; see the roadmap.
 
 ## Roadmap
 
-Planned work on the Fast Multipole Method, in the order it is intended to be done. Each item is tracked as a GitHub issue. At order 2 the FMM's time splits roughly as 38% for the M2L conversions, 26% for the near field (P2P), and 22% for building the harmonics tables, so the first items go after the tables.
+Planned work on the Fast Multipole Method, in the order it is intended to be done. Each item is tracked as a GitHub issue. At order 2 (profiled after #1) the FMM's time splits roughly as 40% for the M2L conversions, which include building their tables, 34% for the near field (P2P), and 9% in `harmonics` itself, so the remaining items go after those three.
 
 | # | Item | Why | Notes |
 | - | ---- | --- | ----- |
-| [#1](https://github.com/NonDairyNeutrino/better_n_better_n_body/issues/1) | Fuse and scale the M2L table without `powi` or `isqrt` | about 13% of the time is spent in `powi` and integer square roots when building each table | estimated 12–14% faster; to be measured |
+| [#1](https://github.com/NonDairyNeutrino/better_n_better_n_body/issues/1) | Fuse and scale the M2L table without `powi` or `isqrt` | about 13% of the time is spent in `powi` and integer square roots when building each table | done: measured about 5–6% faster (estimate was 12–14%); `powi` and `isqrt` are gone from the M2L path |
 | [#2](https://github.com/NonDairyNeutrino/better_n_better_n_body/issues/2) | Precompute the recurrence coefficients in `harmonics` | two square roots and a division per entry depend only on `(n, m)` | after 1 |
 | [#3](https://github.com/NonDairyNeutrino/better_n_better_n_body/issues/3) | Cache M2L tables by level and relative offset | about a thousand offsets recur for 3.8 million conversions | after 1 and 2; floating-point keys need rounding |
 | [#4](https://github.com/NonDairyNeutrino/better_n_better_n_body/issues/4) | Evaluate the gradient directly in L2P | O(p²) per body instead of an O(p⁴) shift followed by reading degree 1 | independent of the others; derivative factors must be checked numerically first |
