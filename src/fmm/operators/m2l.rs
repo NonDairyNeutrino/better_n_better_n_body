@@ -403,6 +403,76 @@ mod tests {
         irregular_table(2, [0.0; 3]);
     }
 
+    // ------------------------------------------------------------- scaled_table
+
+    const SHIFTS: [Vec3; 6] = [
+        [3.1, -2.2, 2.6],
+        [-0.7, 0.4, -1.3],
+        [0.0, 0.0, 2.5],
+        [0.0, -4.0, 0.0],
+        [5.0, 0.0, 0.0],
+        [0.2, 0.1, 0.05],
+    ];
+
+    /// The one-pass table is the old two-pass result: `irregular_table`
+    /// multiplied entry by entry by `scale.table`.
+    #[test]
+    fn the_scaled_table_equals_the_irregular_table_times_the_table_scaling() {
+        for p in 0..=4 {
+            let sc = M2LScalings::new(p);
+            for shift in SHIFTS {
+                let got = scaled_table(p, shift, &sc);
+                let plain = irregular_table(p, shift);
+                assert_eq!(got.len(), plain.len(), "p={p} shift {shift:?}: length");
+                for (i, (g, t)) in got.iter().zip(&plain).enumerate() {
+                    let want = *t * sc.table[i];
+                    let tol = 1e-12 * want.re.abs().max(want.im.abs()).max(1.0);
+                    assert_close(*g, want, tol, &format!("p={p} shift {shift:?} slot {i}"));
+                }
+            }
+        }
+    }
+
+    /// (2p + 1)^2 entries, whatever the shift.
+    #[test]
+    fn the_scaled_table_reaches_degree_two_p() {
+        for p in 0..=4 {
+            let sc = M2LScalings::new(p);
+            assert_eq!(
+                scaled_table(p, [0.3, -0.4, 0.5], &sc).len(),
+                (2 * p + 1).pow(2)
+            );
+        }
+    }
+
+    /// On the z axis only the m = 0 slots are nonzero. Checking one slot per
+    /// degree pins the power of 1/r at every degree, including 2p.
+    #[test]
+    fn on_the_z_axis_the_scaled_table_is_the_weight_times_the_inverse_power_of_z() {
+        let sc = M2LScalings::new(3);
+        for z in [0.5, 1.7, -2.0] {
+            let table = scaled_table(3, [0.0, 0.0, z], &sc);
+            let plain = irregular_table(3, [0.0, 0.0, z]);
+            for n in 0..=6i64 {
+                let i = to_index(n, 0);
+                let want = plain[i].re * sc.table[i];
+                let tol = 1e-12 * want.abs().max(1.0);
+                assert!(
+                    (table[i].re - want).abs() <= tol && table[i].im.abs() <= tol,
+                    "z={z} n={n}: got ({}, {}), want {want}",
+                    table[i].re,
+                    table[i].im
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "zero shift")]
+    fn the_scaled_table_refuses_a_zero_shift() {
+        scaled_table(2, [0.0; 3], &M2LScalings::new(2));
+    }
+
     // ----------------------------------------------------------- conversion_sign
 
     /// (-1)^j times a min-based sign that applies only when k and m are both
